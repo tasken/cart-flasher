@@ -16,9 +16,9 @@
 #include "banner_ops.h"
 #include "device.h"
 #include "ui.h"
-#include "blowfish_ntr_bin.h"
-#include "blowfish_dev_bin.h"
-#include "blowfish_retail_bin.h"
+#include "blowfish_cartridge_ntr_bin.h"
+#include "blowfish_ntrboot_ctr-D_bin.h"
+#include "blowfish_ntrboot_ctr-R_bin.h"
 
 int progressCount = 0;
 static bool suppressDriverProgress = false;
@@ -164,11 +164,11 @@ namespace flashcart_core {
 			switch (key) {
 				default:
 				case BlowfishKey::NTR:
-					return *static_cast<const std::uint8_t(*)[0x1048]>(static_cast<const void *>(blowfish_ntr_bin));
+					return *static_cast<const std::uint8_t(*)[0x1048]>(static_cast<const void *>(blowfish_cartridge_ntr_bin));
 				case BlowfishKey::B9Retail:
-					return *static_cast<const std::uint8_t(*)[0x1048]>(static_cast<const void *>(blowfish_retail_bin));
+					return *static_cast<const std::uint8_t(*)[0x1048]>(static_cast<const void *>(blowfish_ntrboot_ctr_R_bin));
 				case BlowfishKey::B9Dev:
-					return *static_cast<const std::uint8_t(*)[0x1048]>(static_cast<const void *>(blowfish_dev_bin));
+					return *static_cast<const std::uint8_t(*)[0x1048]>(static_cast<const void *>(blowfish_ntrboot_ctr_D_bin));
 			}
 		}
 	}
