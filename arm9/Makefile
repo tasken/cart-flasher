@@ -73,7 +73,7 @@ endif
 SOURCES_S	:= $(shell find -L $(SOURCEDIRS) -name "*.s")
 SOURCES_C	:= $(shell find -L $(SOURCEDIRS) -name "*.c")
 SOURCES_CPP	:= $(filter-out source/debug_simulated_cart.cpp, $(shell find -L $(SOURCEDIRS) -name "*.cpp")) $(FLASHCART_CORE_SOURCES)
-SOURCES_BIN	:= $(filter-out data/debug_simulated_banner.bin, $(shell find -L $(DATA) -name "*.*"))
+SOURCES_BIN	:= $(filter-out data/debug_simulated_banner.bin data/blowfish_ntrboot_twl_%.bin data/blowfish_cartridge_twl-%.bin, $(shell find -L $(DATA) -name "*.*"))
 
 ifeq ($(CART_FLASHER_BUILD_KIND),Debug)
 DEFINES += -DCART_FLASHER_DEBUG_SIM=1

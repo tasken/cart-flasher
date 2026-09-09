@@ -295,7 +295,6 @@ static return_codes_t StreamFlash(flashcart_core::Flashcart* cart, const char* f
 	if (!chunkBuffer) {
 		return MEM_ALLOC_FAILED;
 	}
-
 	FILE *file = fopen(filepath, isRead ? "wb" : "rb");
 	if (!file) {
 		delete[] chunkBuffer;
@@ -305,10 +304,29 @@ static return_codes_t StreamFlash(flashcart_core::Flashcart* cart, const char* f
 	if (!isRead) {
 		// Validate size before touching the cart -- streaming would otherwise only
 		// notice a truncated file mid-loop, aborting with the firmware half overwritten.
-		fseek(file, 0, SEEK_END);
+		if (fseek(file, 0, SEEK_END) != 0) {
+			flashcart_core::platform::logMessage(flashcart_core::LOG_ERR,
+				"StreamFlash: couldn't seek selected image %s", filepath);
+			delete[] chunkBuffer;
+			fclose(file);
+			return FILE_IO_FAILED;
+		}
 		long fileSize = ftell(file);
-		rewind(file);
-		if (fileSize < 0 || (u32)fileSize < Flash_size) {
+		if (fseek(file, 0, SEEK_SET) != 0) {
+			flashcart_core::platform::logMessage(flashcart_core::LOG_ERR,
+				"StreamFlash: couldn't rewind selected image %s", filepath);
+			delete[] chunkBuffer;
+			fclose(file);
+			return FILE_IO_FAILED;
+		}
+		if (fileSize < 0) {
+			flashcart_core::platform::logMessage(flashcart_core::LOG_ERR,
+				"StreamFlash: couldn't determine size of selected image %s", filepath);
+			delete[] chunkBuffer;
+			fclose(file);
+			return FILE_IO_FAILED;
+		}
+		if ((u32)fileSize < Flash_size) {
 			flashcart_core::platform::logMessage(flashcart_core::LOG_ERR,
 				"StreamFlash: expected at least %lu bytes, got %ld from %s",
 				static_cast<unsigned long>(Flash_size), fileSize, filepath);
@@ -372,9 +390,15 @@ static return_codes_t StreamFlash(flashcart_core::Flashcart* cart, const char* f
 		SetProgressOverride(0, 0); // Reset override before drawing absolute progress
 		ShowProgress(BOTTOM_SCREEN, chunkOffset + currentChunkSize, Flash_size, progressLabel);
 	}
-
-	fclose(file);
+	const int closeResult = fclose(file);
 	delete[] chunkBuffer;
+	if (closeResult != 0) {
+		flashcart_core::platform::logMessage(flashcart_core::LOG_ERR,
+			"StreamFlash: couldn't finish %s", filepath);
+		SetProgressOverride(0, 0);
+		SetProgressStatusOverride(nullptr);
+		return FILE_IO_FAILED;
+	}
 
 	SetProgressOverride(0, 0); // Reset override
 	ShowProgress(BOTTOM_SCREEN, Flash_size, Flash_size, progressLabel);
@@ -511,13 +535,24 @@ return_codes_t ValidateFlashImage(flashcart_core::Flashcart* cart, const char* f
 		return FILE_IO_FAILED;
 	}
 	const long fileSize = ftell(file);
-	if (fileSize < 0 || static_cast<size_t>(fileSize) < flashSize) {
+	if (fileSize < 0) {
+		flashcart_core::platform::logMessage(flashcart_core::LOG_ERR,
+			"FlashImage: couldn't determine size of %s", filepath);
+		fclose(file);
+		return FILE_IO_FAILED;
+	}
+	if (static_cast<size_t>(fileSize) < flashSize) {
 		flashcart_core::platform::logMessage(flashcart_core::LOG_ERR,
 			"FlashImage: expected at least %lu bytes, got %ld",
 			static_cast<unsigned long>(flashSize), fileSize);
+		fclose(file);
 		return FLASH_IMAGE_INVALID;
 	}
-	fclose(file);
+	if (fclose(file) != 0) {
+		flashcart_core::platform::logMessage(flashcart_core::LOG_ERR,
+			"FlashImage: couldn't finish %s", filepath);
+		return FILE_IO_FAILED;
+	}
 
 	// Some supported carts have historical oversized backups. Their leading
 	// flashSize bytes remain a valid restore image, so only reject truncation.

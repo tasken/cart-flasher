@@ -23,6 +23,10 @@ struct Ace3DSRecoveryProfile {
     uint8_t expectedFlashCapacity;
 };
 
+// sendSpi() receives the wire-order EB 60 15 bytes into a little-endian
+// uint32_t, so the TH25Q16-class RDID is represented as 0x1560EB here.
+constexpr uint32_t kTh25Q16Rdid = 0x1560EB;
+
 const Ace3DSRecoveryProfile r4iSdhcHkDualCore2021Adle = {
     "R4iSDHC.hk Dual Core 2021 (ADLE recovery)",
     "r4isdhc-hk-adle-recovery",
@@ -621,6 +625,10 @@ public:
                 return false;
         }
 
+        if (rdid == kTh25Q16Rdid) {
+            logMessage(LOG_NOTICE,
+                "Ace3DSPlus: TH25Q16-class 2 MiB serial flash (RDID EB 60 15)");
+        }
         logMessage(LOG_INFO, "Ace3DSPlus RDID: %06lX", rdid);
         m_flashCapacity = flashCapacity;
 
@@ -630,6 +638,14 @@ public:
     void shutdown() {}
 
     bool readFlash(uint32_t address, uint32_t length, uint8_t *buffer) {
+        const size_t flashSize = getMaxLength();
+        if (address > flashSize || length > flashSize - address) {
+            logMessage(LOG_ERR,
+                "Ace3DSPlus: read range %08lX + %08lX exceeds %lu bytes",
+                static_cast<unsigned long>(address), static_cast<unsigned long>(length),
+                static_cast<unsigned long>(flashSize));
+            return false;
+        }
         return Util::read(this, address, length, buffer, true);
     }
 

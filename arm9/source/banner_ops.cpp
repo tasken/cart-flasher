@@ -16,7 +16,7 @@ using flashcart_core::platform::logMessage;
 
 enum class Profile {
     None,
-    Ace3DSAl3e,
+    Ace3DS,
     R4iSdhc20xx,
     DebugSimulated,
 };
@@ -29,12 +29,27 @@ enum class TargetFormat {
 
 constexpr std::uint32_t kAceMapSize = 0x4000;
 constexpr std::uint32_t kAceHeaderVirtualOffset = 0x000000;
-constexpr std::uint32_t kAceBannerOffset = 0xF5E00;
-constexpr std::uint32_t kAceBannerVirtualOffset = 0x1A1E00;
-constexpr std::uint32_t kAceBlockStart = 0xF5000;
-constexpr std::uint32_t kAceBlockSize = 0x1000;
-constexpr std::uint32_t kAceBlockRange = kAceBlockSize * 2;
-constexpr std::uint64_t kAceMapFingerprint = 0x23D20EA2938A4E50ULL;
+constexpr std::uint32_t kAceHeaderOffset = 0xA000;
+
+struct AceBannerLayout {
+    std::uint64_t mapFingerprint;
+    const char *expectedGameCode;
+    std::uint32_t bannerVirtualOffset;
+    std::uint32_t bannerOffset;
+    std::uint32_t blockStart;
+    std::uint32_t blockRange;
+};
+
+// Each profile pins the complete map before resolving its header and banner.
+// The raw locations are then checked again, so another Ace map cannot unlock
+// banner writing by sharing only a title or game code.
+constexpr AceBannerLayout kAceAl3eBannerLayout = {
+    0x23D20EA2938A4E50ULL, nullptr, 0x1A1E00, 0x0F5E00, 0x0F5000, 0x2000,
+};
+
+constexpr AceBannerLayout kAceAdleTh25BannerLayout = {
+    0xA7AE46E14DC15FC1ULL, "ADLE", 0x11B200, 0x120200, 0x120000, 0x1000,
+};
 
 constexpr std::uint32_t kR4HeaderOffset = 0x1F0000;
 constexpr std::uint32_t kR4BannerOffset = 0x1A6600;
@@ -59,7 +74,7 @@ std::uint32_t AceCapacityBytes(std::uint8_t capacity) {
 
 Profile ProfileForCart(Flashcart *cart) {
     if (std::strcmp(cart->getShortName(), "Ace3DSPlus") == 0) {
-        return Profile::Ace3DSAl3e;
+        return Profile::Ace3DS;
     }
     if (std::strcmp(cart->getShortName(), "r4isdhc") == 0) {
         return Profile::R4iSdhc20xx;
@@ -95,66 +110,81 @@ std::uint32_t AceMapEntry(const std::uint8_t *map, std::uint32_t index) {
         | (static_cast<std::uint32_t>(map[index * 2 + 1]) << 8);
 }
 
-bool ResolveAceLayout(Flashcart *cart) {
+const AceBannerLayout *FindAceBannerLayout(std::uint64_t mapFingerprint) {
+    if (mapFingerprint == kAceAl3eBannerLayout.mapFingerprint) {
+        return &kAceAl3eBannerLayout;
+    }
+    if (mapFingerprint == kAceAdleTh25BannerLayout.mapFingerprint) {
+        return &kAceAdleTh25BannerLayout;
+    }
+    return nullptr;
+}
+
+const AceBannerLayout *ResolveAceLayout(Flashcart *cart) {
     const std::uint8_t capacity = cart->getFlashCapacityCode();
     const std::uint32_t capacityBytes = AceCapacityBytes(capacity);
     if (capacityBytes == 0) {
         logMessage(LOG_NOTICE,
             "Ace3DSPlus banner: requires known 1 MiB or 2 MiB flash, got %02X; option disabled",
             static_cast<unsigned>(capacity));
-        return false;
-    }
-    if (kAceBlockStart + kAceBlockRange > capacityBytes) {
-        logMessage(LOG_NOTICE,
-            "Ace3DSPlus banner: banner pages exceed selected chip capacity; option disabled");
-        return false;
+        return nullptr;
     }
 
     std::uint8_t *map = new(std::nothrow) std::uint8_t[kAceMapSize];
     if (!map) {
         logMessage(LOG_ERR, "Ace3DSPlus banner: page-map buffer unavailable");
-        return false;
+        return nullptr;
     }
     if (!cart->readFlash(0, kAceMapSize, map)) {
         delete[] map;
         logMessage(LOG_NOTICE, "Ace3DSPlus banner: page-map read failed; option disabled");
-        return false;
+        return nullptr;
     }
-    if (Fingerprint(map, kAceMapSize) != kAceMapFingerprint) {
+    const AceBannerLayout *const layout = FindAceBannerLayout(
+        Fingerprint(map, kAceMapSize));
+    if (!layout) {
         delete[] map;
         logMessage(LOG_NOTICE,
-            "Ace3DSPlus banner: page map is not the known AL3E layout");
-        return false;
+            "Ace3DSPlus banner: page map is not a known banner layout");
+        return nullptr;
+    }
+    if (layout->blockStart + layout->blockRange > capacityBytes) {
+        delete[] map;
+        logMessage(LOG_NOTICE,
+            "Ace3DSPlus banner: banner pages exceed selected chip capacity; option disabled");
+        return nullptr;
     }
 
     const std::uint32_t headerPage = AceMapEntry(map, kAceHeaderVirtualOffset >> 12);
     const std::uint32_t headerOffset = headerPage << 12;
-    const std::uint32_t bannerPage = AceMapEntry(map, kAceBannerVirtualOffset >> 12);
+    const std::uint32_t bannerPage = AceMapEntry(map, layout->bannerVirtualOffset >> 12);
     const std::uint32_t bannerOffset = (bannerPage << 12)
-        | (kAceBannerVirtualOffset & 0xFFF);
+        | (layout->bannerVirtualOffset & 0xFFF);
     delete[] map;
 
-    if (headerOffset != 0xA000 || bannerOffset != kAceBannerOffset) {
+    if (headerOffset != kAceHeaderOffset || bannerOffset != layout->bannerOffset) {
         logMessage(LOG_NOTICE,
             "Ace3DSPlus banner: page map resolves unexpected header or banner location");
-        return false;
+        return nullptr;
     }
 
     std::uint8_t header[0x200];
     if (!cart->readFlash(headerOffset, sizeof(header), header)) {
         logMessage(LOG_NOTICE, "Ace3DSPlus banner: target header read failed; option disabled");
-        return false;
+        return nullptr;
     }
     const std::uint32_t virtualBanner = static_cast<std::uint32_t>(header[0x68])
         | (static_cast<std::uint32_t>(header[0x69]) << 8)
         | (static_cast<std::uint32_t>(header[0x6A]) << 16)
         | (static_cast<std::uint32_t>(header[0x6B]) << 24);
-    if (virtualBanner != kAceBannerVirtualOffset) {
+    if ((layout->expectedGameCode
+            && std::memcmp(header + 0x0C, layout->expectedGameCode, 4) != 0)
+        || virtualBanner != layout->bannerVirtualOffset) {
         logMessage(LOG_NOTICE,
-            "Ace3DSPlus banner: header has an unknown virtual banner pointer");
-        return false;
+            "Ace3DSPlus banner: header does not match the mapped banner layout");
+        return nullptr;
     }
-    return true;
+    return layout;
 }
 
 bool IsR4Header(const std::uint8_t *header, size_t size) {
@@ -237,14 +267,15 @@ const char *R4TargetFailure(const std::uint8_t *banner, size_t size) {
     return nullptr;
 }
 
-bool ValidateAceTarget(Flashcart *cart, bool announce) {
-    if (!ResolveAceLayout(cart)) {
-        return false;
+const AceBannerLayout *ValidateAceTarget(Flashcart *cart, bool announce) {
+    const AceBannerLayout *const layout = ResolveAceLayout(cart);
+    if (!layout) {
+        return nullptr;
     }
     std::uint8_t banner[kSourceBannerSize];
-    if (!cart->readFlash(kAceBannerOffset, sizeof(banner), banner)) {
+    if (!cart->readFlash(layout->bannerOffset, sizeof(banner), banner)) {
         logMessage(LOG_NOTICE, "Ace3DSPlus banner: target banner read failed; option disabled");
-        return false;
+        return nullptr;
     }
     const SourceValidation validation = ValidateSourceBanner(banner, sizeof(banner));
     if (validation != SourceValidation::Valid) {
@@ -254,7 +285,7 @@ bool ValidateAceTarget(Flashcart *cart, bool announce) {
                 ? "banner version is not Regular DS v1"
                 : "banner checksum is invalid";
         logMessage(LOG_NOTICE, "Ace3DSPlus banner: %s; option disabled", reason);
-        return false;
+        return nullptr;
     }
     if (announce) {
         const std::uint32_t capacityBytes = AceCapacityBytes(
@@ -263,7 +294,7 @@ bool ValidateAceTarget(Flashcart *cart, bool announce) {
             "Ace3DSPlus banner: target geometry verified (%lu KiB selected chip)",
             static_cast<unsigned long>(capacityBytes / 1024));
     }
-    return true;
+    return layout;
 }
 
 bool ValidateR4Target(Flashcart *cart, TargetFormat *format, bool announce) {
@@ -336,8 +367,8 @@ bool HasAvailableOperation(Flashcart *cart) {
     SetDriverProgressSuppressed(true);
     bool available = false;
     switch (ProfileForCart(cart)) {
-        case Profile::Ace3DSAl3e:
-            available = ValidateAceTarget(cart, true);
+        case Profile::Ace3DS:
+            available = ValidateAceTarget(cart, true) != nullptr;
             break;
         case Profile::R4iSdhc20xx: {
             TargetFormat format;
@@ -359,13 +390,15 @@ bool ReadBanner(Flashcart *cart, std::uint8_t *banner, std::uint32_t bannerSize)
         return false;
     }
     switch (ProfileForCart(cart)) {
-        case Profile::Ace3DSAl3e:
-            if (!ValidateAceTarget(cart, false)
-                || !cart->readFlash(kAceBannerOffset, bannerSize, banner)) {
+        case Profile::Ace3DS: {
+            const AceBannerLayout *const layout = ValidateAceTarget(cart, false);
+            if (!layout
+                || !cart->readFlash(layout->bannerOffset, bannerSize, banner)) {
                 return false;
             }
             logMessage(LOG_NOTICE, "Ace3DSPlus banner: exported current v1 banner");
             return true;
+        }
         case Profile::R4iSdhc20xx: {
             TargetFormat format;
             if (!ValidateR4Target(cart, &format, false)) {
@@ -406,33 +439,34 @@ bool WriteBanner(Flashcart *cart, const std::uint8_t *banner,
         return false;
     }
     switch (ProfileForCart(cart)) {
-        case Profile::Ace3DSAl3e: {
-            if (!ValidateAceTarget(cart, false)) {
+        case Profile::Ace3DS: {
+            const AceBannerLayout *const layout = ValidateAceTarget(cart, false);
+            if (!layout) {
                 return false;
             }
-            std::uint8_t *expected = new(std::nothrow) std::uint8_t[kAceBlockRange];
-            std::uint8_t *verified = new(std::nothrow) std::uint8_t[kAceBlockRange];
+            std::uint8_t *expected = new(std::nothrow) std::uint8_t[layout->blockRange];
+            std::uint8_t *verified = new(std::nothrow) std::uint8_t[layout->blockRange];
             if (!expected || !verified) {
                 delete[] expected;
                 delete[] verified;
                 logMessage(LOG_ERR, "Ace3DSPlus banner: verification buffers unavailable");
                 return false;
             }
-            if (!cart->readFlash(kAceBlockStart, kAceBlockRange, expected)) {
+            if (!cart->readFlash(layout->blockStart, layout->blockRange, expected)) {
                 delete[] expected;
                 delete[] verified;
                 return false;
             }
-            const std::uint32_t offset = kAceBannerOffset - kAceBlockStart;
+            const std::uint32_t offset = layout->bannerOffset - layout->blockStart;
             std::memcpy(expected + offset, banner, bannerSize);
             logMessage(LOG_NOTICE, "Ace3DSPlus banner: writing blocks %08lX-%08lX",
-                static_cast<unsigned long>(kAceBlockStart),
-                static_cast<unsigned long>(kAceBlockStart + kAceBlockRange - 1));
-            const bool written = cart->writeFlash(kAceBlockStart, kAceBlockRange,
+                static_cast<unsigned long>(layout->blockStart),
+                static_cast<unsigned long>(layout->blockStart + layout->blockRange - 1));
+            const bool written = cart->writeFlash(layout->blockStart, layout->blockRange,
                 expected);
             const bool verifiedOk = written
-                && cart->readFlash(kAceBlockStart, kAceBlockRange, verified)
-                && std::memcmp(expected, verified, kAceBlockRange) == 0;
+                && cart->readFlash(layout->blockStart, layout->blockRange, verified)
+                && std::memcmp(expected, verified, layout->blockRange) == 0;
             delete[] expected;
             delete[] verified;
             if (!verifiedOk) {
