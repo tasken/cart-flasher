@@ -117,8 +117,8 @@ static void DrawBannerValidationError(return_codes_t result, const char *action)
 			? "It is not a Regular DS v1 banner."
 			: "The banner checksum is invalid.";
 	char message[128];
-	snprintf(message, sizeof(message), "Choose another .bin banner.\n\n%s", reason);
-	DrawTopStatus("Banner file rejected", message, COLOR_RED, action);
+	snprintf(message, sizeof(message), "Choose another .bin DS banner.\n\n%s", reason);
+	DrawTopStatus("DS banner file rejected", message, COLOR_RED, action);
 }
 
 static void DrawFlashImageValidationError(const char *action) {
@@ -486,7 +486,7 @@ void menu_lvl2(Flashcart* cart)
 			const bool isBannerWrite = hasBannerTools && menu_sel == 3;
 			if (!isBackup && !isBannerBackup) {
 				if (!BrowseForFile(isBannerWrite ? "/cart-backups/banners" : "/cart-backups", ".bin",
-					isBannerWrite ? "Choose a .bin banner" : "Choose a .bin flash file",
+					isBannerWrite ? "Choose a .bin DS banner" : "Choose a .bin flash file",
 					writePath, sizeof(writePath))) {
 					DrawHeader(TOP_SCREEN, cart->getName());
 					DrawTopFooterAction("<A> Select   <B> Back");
@@ -505,8 +505,8 @@ void menu_lvl2(Flashcart* cart)
 						if (isBannerWrite && IsBannerValidationFailure(validation)) {
 							DrawBannerValidationError(validation, "<B> Back to banner list");
 						} else if (isBannerWrite && validation == FLASH_OP_FAILED) {
-							DrawTopStatus("Banner write unavailable",
-								"This cart's banner layout is\nno longer recognized.\n\nNo changes were made.",
+							DrawTopStatus("DS banner write unavailable",
+								"This cart's DS banner layout is\nno longer recognized.\n\nNo changes were made.",
 								COLOR_RED, "<B> Back to banner list");
 						} else if (!isBannerWrite && validation == FLASH_OP_FAILED) {
 							DrawTopStatus("Flash write unavailable",
@@ -515,9 +515,9 @@ void menu_lvl2(Flashcart* cart)
 						} else if (!isBannerWrite && validation == FLASH_IMAGE_INVALID) {
 							DrawFlashImageValidationError("<B> Back to flash list");
 						} else {
-							DrawTopStatus(isBannerWrite ? "Banner check failed" : "Flash image check failed",
+							DrawTopStatus(isBannerWrite ? "DS banner check failed" : "Flash image check failed",
 								isBannerWrite
-									? "Couldn't read the selected banner.\nCheck the SD card, then try again."
+									? "Couldn't read the selected DS banner.\nCheck the SD card, then try again."
 									: "Couldn't read the selected file.\nCheck the SD card, then try again.",
 								COLOR_RED, isBannerWrite
 									? "<B> Back to banner list"
@@ -554,10 +554,10 @@ void menu_lvl2(Flashcart* cart)
 			else if (isBannerBackup)
 			{
 				DrawString(TOP_SCREEN, FONT_WIDTH, 2 * FONT_HEIGHT, COLOR_WHITE,
-					"Save this cart's DS banner to\n"
+					"Back up this cart's DS banner to\n"
 					"/cart-backups/banners.\n\n"
 					"Nothing is written to the cart.");
-				DrawTopFooterAction("<A> Save banner   <B> Cancel");
+				DrawTopFooterAction("<A> Back up DS banner   <B> Cancel");
 				confirmed = WaitConfirm();
 			}
 			else if (isBannerWrite)
@@ -603,20 +603,20 @@ void menu_lvl2(Flashcart* cart)
 
 					case FILE_OPEN_FAILED:
 						if (isBackup) {
-							DrawTopStatus("Backup failed",
-								"Couldn't create the backup.\nFree SD card space or unlock it,\nthen try again.",
+							DrawTopStatus("Flash backup failed",
+								"Couldn't create the flash backup.\nFree SD card space or unlock it,\nthen try again.",
 								COLOR_RED, "<B> Back to cart list");
 						} else if (isBannerBackup) {
-							DrawTopStatus("Banner backup failed",
-								"Couldn't create the banner backup.\nFree SD card space or unlock it,\nthen try again.",
+							DrawTopStatus("DS banner backup failed",
+								"Couldn't create the DS banner backup.\nFree SD card space or unlock it,\nthen try again.",
 								COLOR_RED, "<B> Back to cart list");
 						} else if (isBannerWrite) {
-							DrawTopStatus("Banner write failed",
-								"Couldn't open the banner file.\nIt may have moved. Choose it again.",
+							DrawTopStatus("DS banner write failed",
+								"Couldn't open the DS banner file.\nIt may have moved. Choose it again.",
 								COLOR_RED, "<B> Back to cart list");
 						} else {
-							DrawTopStatus("Write failed",
-								"Couldn't open the selected file.\nIt may have moved. Choose it again.",
+							DrawTopStatus("Flash write failed",
+								"Couldn't open the selected flash file.\nIt may have moved. Choose it again.",
 								COLOR_RED, "<B> Back to cart list");
 						}
 						WaitPress(KEY_B);
@@ -624,20 +624,20 @@ void menu_lvl2(Flashcart* cart)
 
 					case FILE_IO_FAILED:
 						if (isBackup) {
-							DrawTopStatus("Backup failed",
-								"Backup may be incomplete.\nDo not use Write flash.\n\nCheck the SD card, then\nselect Back up flash again.",
+							DrawTopStatus("Flash backup failed",
+								"Flash backup may be incomplete.\nDo not use Write flash.\n\nCheck the SD card, then\nselect Back up flash again.",
 								COLOR_RED, "<B> Back to cart list");
 						} else if (isBannerBackup) {
-							DrawTopStatus("Banner backup failed",
-								"Couldn't save the banner backup.\nFree SD card space, then try\nagain.",
+							DrawTopStatus("DS banner backup failed",
+								"Couldn't save the DS banner backup.\nFree SD card space, then try\nagain.",
 								COLOR_RED, "<B> Back to cart list");
 						} else if (isBannerWrite) {
-							DrawTopStatus("Banner write failed",
-								"Couldn't read the banner file.\nReinsert the SD card, then\ntry again.",
+							DrawTopStatus("DS banner write failed",
+								"Couldn't read the DS banner file.\nReinsert the SD card, then\ntry again.",
 								COLOR_RED, "<B> Back to cart list");
 						} else {
-							DrawTopStatus("Write failed",
-								"Write may have started.\nDo not retry.\n\nPower off. Restore a verified\nbackup.",
+							DrawTopStatus("Flash write failed",
+								"Flash write may have started.\nDo not retry.\n\nPower off. Restore a verified\nbackup.",
 								COLOR_RED, "<B> Back to cart list");
 						}
 						WaitPress(KEY_B);
@@ -645,20 +645,20 @@ void menu_lvl2(Flashcart* cart)
 
 					case FLASH_OP_FAILED:
 						if (isBackup) {
-							DrawTopStatus("Backup failed",
-								"Backup stopped before completion.\nReinsert the cart and retry.\n\nIf it fails again, do not use\nWrite flash; open an issue.",
+							DrawTopStatus("Flash backup failed",
+								"Flash backup stopped before completion.\nReinsert the cart and retry.\n\nIf it fails again, do not use\nWrite flash; open an issue.",
 								COLOR_RED, "<B> Back to cart list");
 						} else if (isBannerBackup) {
-							DrawTopStatus("Banner backup failed",
-								"Banner backup unavailable.\nNo changes were made. Go back,\nselect the cart, and try again.",
+							DrawTopStatus("DS banner backup failed",
+								"DS banner backup unavailable.\nNo changes were made. Go back,\nselect the cart, and try again.",
 								COLOR_RED, "<B> Back to cart list");
 						} else if (isBannerWrite) {
-							DrawTopStatus("Banner write failed",
-								"Banner write or check failed.\nThe banner may be partly changed.\n\nDo not retry. Restore a verified\nflashrom backup.",
+							DrawTopStatus("DS banner write failed",
+								"DS banner write or check failed.\nThe DS banner may be partly changed.\n\nDo not retry. Restore a verified\nflashrom backup.",
 								COLOR_RED, "<B> Back to cart list");
 						} else {
-							DrawTopStatus("Write failed",
-								"Write flash stopped partway through.\nDo not retry.\n\nPower off, check the cart, then\nrestore a verified backup.",
+							DrawTopStatus("Flash write failed",
+								"Flash write stopped partway through.\nDo not retry.\n\nPower off, check the cart, then\nrestore a verified backup.",
 								COLOR_RED, "<B> Back to cart list");
 						}
 						WaitPress(KEY_B);
@@ -668,8 +668,8 @@ void menu_lvl2(Flashcart* cart)
 					case BANNER_VERSION_INVALID:
 					case BANNER_CRC_INVALID:
 						if (isBannerBackup) {
-							DrawTopStatus("Banner backup failed",
-								"The cart's banner could not be\nchecked, so it was not saved.",
+							DrawTopStatus("DS banner backup failed",
+								"The cart's DS banner could not be\nchecked, so it was not saved.",
 								COLOR_RED, "<B> Back to cart list");
 						} else {
 							DrawBannerValidationError(ntrboot_return, "<B> Back to cart list");
@@ -691,19 +691,19 @@ void menu_lvl2(Flashcart* cart)
 
 					case ALL_OK:
 						if (isBackup) {
-							DrawTopStatus("Backup complete",
-								"Saved in /cart-backups.\nCopy it off the SD card for\nsafekeeping.",
+							DrawTopStatus("Flash backup complete",
+								"Saved in /cart-backups.\nCopy the flash backup off the\nSD card for safekeeping.",
 								COLOR_GREEN, "<A> Continue");
 						} else if (isBannerBackup) {
-							DrawTopStatus("Banner backup complete",
+							DrawTopStatus("DS banner backup complete",
 								"Saved in /cart-backups/banners.",
 								COLOR_GREEN, "<A> Continue");
 						} else if (isBannerWrite) {
-							DrawTopStatus("Banner updated",
-								"Banner updated and verified.\nOnly banner data changed.",
+							DrawTopStatus("DS banner updated",
+								"DS banner updated and verified.\nOnly DS banner data changed.",
 								COLOR_GREEN, "<A> Continue");
 						} else {
-							DrawTopStatus("Write complete",
+							DrawTopStatus("Flash write complete",
 								"Flashrom write complete.\nKeep your original backup safe.",
 								COLOR_GREEN, "<A> Continue");
 						}

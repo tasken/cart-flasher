@@ -336,7 +336,7 @@ static return_codes_t StreamFlash(flashcart_core::Flashcart* cart, const char* f
 		}
 	}
 
-	const char *headerText = isRead ? "Backing up your cart..." : "Writing to your cart...";
+	const char *headerText = isRead ? "Backing up flashrom..." : "Writing flashrom...";
 	const char *addrVerb = isRead ? "Reading" : "Writing";
 	const char *progressLabel = isRead ? "Reading flash" : "Writing flash";
 
@@ -669,7 +669,7 @@ return_codes_t WriteBanner(flashcart_core::Flashcart* cart, const char* filepath
 	DrawRectangle(TOP_SCREEN, 0, 2 * FONT_HEIGHT, SCREEN_WIDTH,
 		SCREEN_HEIGHT - 2 * FONT_HEIGHT, COLOR_BLACK);
 	DrawString(TOP_SCREEN, FONT_WIDTH, 2 * FONT_HEIGHT, COLOR_WHITE,
-		"Writing and verifying the banner...");
+		"Writing and verifying the DS banner...");
 	DrawString(TOP_SCREEN, FONT_WIDTH, 3 * FONT_HEIGHT, COLOR_WHITE,
 		"Do not power off or remove the cart.");
 	progressCount = 0;
