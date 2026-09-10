@@ -11,6 +11,7 @@
 #include "ui.h"
 #include "nds_platform.h"
 #include "banner_ops.h"
+#include "key_combo_sequence.h"
 #include "device.h"
 #include "filebrowser.h"
 
@@ -726,6 +727,17 @@ void menu_lvl2(Flashcart* cart)
 const char rancombo_symbols[5] = { '\x1B', '\x18', '\x1A', '\x19', 'A' }; // Left, Up, Right, Down
 const u32 rancombo_inputs[5] = { KEY_LEFT, KEY_UP, KEY_RIGHT, KEY_DOWN, KEY_A };
 
+static void PrepareButtonCombo(int sequence[key_combo::kLength],
+	char symbols[key_combo::kLength], u32 inputs[key_combo::kLength],
+	const int rejected[key_combo::kLength])
+{
+	key_combo::Generate(sequence, rejected);
+	for (int i = 0; i < key_combo::kLength; ++i) {
+		symbols[i] = rancombo_symbols[sequence[i]];
+		inputs[i] = rancombo_inputs[sequence[i]];
+	}
+}
+
 bool d0k3_buttoncombo(int titleY, int comboY)
 {
 	// Always 5 slots wide, so it centres itself instead of making callers work
@@ -739,28 +751,19 @@ bool d0k3_buttoncombo(int titleY, int comboY)
 	// No symbol repeats back-to-back, matching GodMode9 (ui.c: `while (lsh ==
 	// lastlsh) lsh = (PRNG & 0x3)`) -- doubled arrows misread as one, and this
 	// keeps the double-tap tolerance below unambiguous.
-	int num_rancombo[5] = { 0, 0, 0, 0, 4 }; // zero based, '4' is the 5th item (A)
-	int last_symbol = -1;
-	for (int i = 0; i < 4; i++) {
-		int symbol = last_symbol;
-		while (symbol == last_symbol) { symbol = rand() % 4; }
-		num_rancombo[i] = symbol;
-		last_symbol = symbol;
-	}
-	char print_rancombo[5] = { ' ', ' ', ' ', ' ', ' ' };
-	u32 check_rancombo[5] = { 0, 0, 0, 0, 0 };
-	for (int i = 0; i < 5; i++) {
-		print_rancombo[i] = rancombo_symbols[num_rancombo[i]];
-	}
-	for (int i = 0; i < 5; i++) {
-		check_rancombo[i] = rancombo_inputs[num_rancombo[i]];
-	}
+	int num_rancombo[key_combo::kLength] = {};
+	char print_rancombo[key_combo::kLength] = {};
+	u32 check_rancombo[key_combo::kLength] = {};
+	PrepareButtonCombo(num_rancombo, print_rancombo, check_rancombo, nullptr);
 	int depth = 0; // combo progress, 0-based
 
 	while (true) {
+		if (depth == key_combo::kLength + 1) {
+			return true;
+		}
 		int temp_c = cur_c;
 		u16 cur_color = COLOR_GREEN;
-		for (int i = 0; i < 5; i++) {
+		for (int i = 0; i < key_combo::kLength; i++) {
 			if (i >= depth) { cur_color = COLOR_WHITE; }
 			d0k3_buttoncombo_print_chars(temp_c, comboY, cur_color, print_rancombo[i]);
 			temp_c += 4 * FONT_WIDTH; //3 for our printout ('<', 'arrow', '>'), and one for the space that follows it
@@ -768,7 +771,8 @@ bool d0k3_buttoncombo(int titleY, int comboY)
 
 		scanKeys();
 		if (keysDown()) {
-			if (keysDown() & check_rancombo[depth]) {
+			if (depth < key_combo::kLength
+				&& (keysDown() & check_rancombo[depth])) {
 				depth++;
 			}
 			else if (keysDown() & KEY_B) {
@@ -780,31 +784,21 @@ bool d0k3_buttoncombo(int titleY, int comboY)
 				// this only suppresses a reset, it never advances the combo.
 			}
 			else {
-				// Clear the calculated combo title and arrows on failure, leaving
-				// the one-character-inset explanatory message intact.
-				DrawRectangle(TOP_SCREEN, 0, titleY, SCREEN_WIDTH, SCREEN_HEIGHT - titleY, COLOR_BLACK);
-
-				// Red error displays where the combo title was.
-				// The action follows the common footer placement.
-				DrawStringCentered(TOP_SCREEN, titleY, COLOR_RED, "Wrong key combo, nothing was touched.");
-				DrawTopFooterAction("<A> Retry   <B> Cancel");
-
-				if (!WaitConfirm()) { return false; }
-
-				// Clear the error/action lines and restore the combo title before retrying.
-				DrawRectangle(TOP_SCREEN, 0, titleY, SCREEN_WIDTH, SCREEN_HEIGHT - titleY, COLOR_BLACK);
-				DrawStringCentered(TOP_SCREEN, titleY, COLOR_YELLOW, "Enter the key combo to confirm:");
-				DrawTopFooterAction("<B> Cancel");
+				int rejected[key_combo::kLength];
+				std::memcpy(rejected, num_rancombo, sizeof(rejected));
+				PrepareButtonCombo(num_rancombo, print_rancombo, check_rancombo,
+					rejected);
 				depth = 0;
+				DrawRectangle(TOP_SCREEN, 0, titleY, SCREEN_WIDTH, FONT_HEIGHT,
+					COLOR_BLACK);
+				DrawStringCentered(TOP_SCREEN, titleY, COLOR_RED,
+					"Wrong combo. Try this one:");
 			}
 		}
 
 		// this is sorta hacky but otherwise the A button doesnt go green
-		if (depth == 5) {
+		if (depth == key_combo::kLength) {
 			depth++;
-		}
-		else if (depth == 6) {
-			return true;
 		}
 	}
 }
