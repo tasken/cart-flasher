@@ -57,7 +57,7 @@ cd cart-flasher/
 sudo ./build.sh
 ```
 
-This builds `cart_flasher-dev.nds` with Docker and BlocksDS. `build.sh` initializes the pinned submodules and refreshes the builder. With a local BlocksDS install, run `git submodule update --init --recursive` once, then use `make`.
+This builds `cart_flasher-dev.nds` with Docker and BlocksDS. `build.sh` initializes the pinned submodules and refreshes the builder. Run `sudo ./build.sh clean` to remove build outputs without refreshing it. With a local BlocksDS install, run `git submodule update --init --recursive` once, then use `make`.
 
 Local Debug builds include a deterministic simulated cart for flash and banner flows. It never sends Slot-1 commands; nightly and release builds exclude it.
 

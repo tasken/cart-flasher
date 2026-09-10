@@ -1,73 +1,142 @@
 #!/bin/bash
-set -eo pipefail
+set -euo pipefail
 
 # Change to the script's directory
 cd "$(dirname "$0")"
 
 BUILD_LOG="build.log"
 
-echo "Initializing pinned core submodules"
-git submodule sync --recursive
-git submodule update --init --checkout \
-    arm9/vendor/flashcart_core \
-    arm9/vendor/libncgc
-if [ ! -f arm9/vendor/flashcart_core/device.h ] \
-    || [ ! -f arm9/vendor/libncgc/include/ncgc/ntrcard.h ]; then
-    echo "Error: core submodule initialization failed."
-    exit 1
-fi
-
-# Check for Docker installation
-if ! command -v docker &> /dev/null; then
-    echo "Error: docker is not installed. Please install Docker."
-    exit 1
-fi
-
-case "$1" in
-    clean)
-        MSG="Cleaning Cart-Flasher via Docker"
-        CMD="make clean"
-        ;;
-    build|"")
-        MSG="Building Cart-Flasher via Docker"
-        CMD="make clean && make"
-        ;;
-    *)
-        echo "Usage: $0 [clean|build]"
-        exit 1
-        ;;
-esac
-
-echo "=== $MSG ==="
-# Resolve the real invoking user's UID/GID, not the shell's current one:
-# when this whole script is run as `sudo ./build.sh`, `id -u`/`id -g` at this
-# point would already report 0:0 (root), silently defeating --user below.
-# sudo exports SUDO_UID/SUDO_GID for exactly this case; fall back to id for a
-# plain (non-sudo) invocation.
+# Resolve the real invoking user's UID/GID before root-owned host commands:
+# when this script is run as `sudo ./build.sh`, id reports root instead.
 BUILD_UID="${SUDO_UID:-$(id -u)}"
 BUILD_GID="${SUDO_GID:-$(id -g)}"
-echo "Refreshing the builder image and BlocksDS packages without Docker cache"
-echo "Running: sudo docker compose build --pull --no-cache (log: $BUILD_LOG)"
-echo "Running: sudo docker compose run --rm --user \"$BUILD_UID:$BUILD_GID\" builder sh -c \"$CMD\""
-echo ""
-# Remove any stale log from a previous run before tee opens a fresh one. Doing
-# this here (not in the Makefile's `clean` target) matters: that target runs
-# *inside* the same piped command below, after tee has already opened this
-# file, so it must never remove build.log itself -- unlinking a file a
-# running process still holds open doesn't stop that process from writing to
-# it, but the file vanishes entirely once the pipeline finishes and tee closes
-# its handle.
-rm -f "$BUILD_LOG"
-# --user matches the container to the host UID/GID: docker-compose.yml has no
-# `user:` directive, so without this the container runs as the base image's
-# default (root), and every build artifact it writes into the bind-mounted
-# .:/work (obj/, out/, .elf/.nds outputs) ends up root-owned on the host --
-# blocking any later non-sudo command (e.g. the host-side PLATFORM=test build)
-# from touching those files without another sudo call.
-# The Compose service uses `network_mode: none`: make only needs the
-# bind-mounted checkout and installed toolchain, so the runtime build must not
-# create or join Docker's default network. Refresh the base image and rebuild
-# every Dockerfile layer so the Dockerfile's wf-pacman step cannot be reused
-# from cache. `pipefail` preserves a build or log-write failure through tee.
-sudo docker compose build --pull --no-cache 2>&1 | tee "$BUILD_LOG"
-sudo docker compose run --rm --user "$BUILD_UID:$BUILD_GID" builder sh -c "$CMD" 2>&1 | tee -a "$BUILD_LOG"
+
+restore_ownership() {
+    if [ "$(id -u)" -ne 0 ] || [ -z "${SUDO_UID:-}" ] || [ -z "${SUDO_GID:-}" ]; then
+        return 0
+    fi
+
+    local status=0
+    local path
+    for path in \
+        "$BUILD_LOG" \
+        .git/config \
+        .git/modules/arm9/vendor/flashcart_core/config \
+        .git/modules/arm9/vendor/libncgc/config \
+        arm9/vendor/flashcart_core \
+        arm9/vendor/libncgc \
+        arm9/generated \
+        arm9/build \
+        arm7/build \
+        arm9/cart_flasher.elf \
+        arm9/cart_flasher.map \
+        arm7/cart_flasher.elf \
+        arm7/cart_flasher.map \
+        cart_flasher-dev.nds; do
+        if [ -e "$path" ]; then
+            chown -R "$BUILD_UID:$BUILD_GID" "$path" || status=$?
+        fi
+    done
+    return "$status"
+}
+
+restore_ownership_on_exit() {
+    local build_status=$?
+    local ownership_status=0
+    trap - EXIT
+    if restore_ownership; then
+        :
+    else
+        ownership_status=$?
+    fi
+    if [ "$build_status" -ne 0 ]; then
+        exit "$build_status"
+    fi
+    exit "$ownership_status"
+}
+
+trap restore_ownership_on_exit EXIT
+
+usage() {
+    echo "Usage: $0 [build|clean]"
+    echo "  build  Refresh BlocksDS, clean, and build (default)"
+    echo "  clean  Remove build outputs without refreshing BlocksDS"
+}
+
+require_docker() {
+    if ! command -v docker >/dev/null 2>&1; then
+        echo "Error: docker is not installed." >&2
+        exit 1
+    fi
+    if ! sudo docker compose version >/dev/null 2>&1; then
+        echo "Error: docker compose is not available." >&2
+        exit 1
+    fi
+}
+
+start_build_log() {
+    rm -f "$BUILD_LOG"
+    : > "$BUILD_LOG"
+    # Restore this root-created file before tee opens it. The exit trap repeats
+    # the repair for submodule configuration and failed builds.
+    restore_ownership
+    printf '%s\n' '=== Cart-Flasher build ===' | tee -a "$BUILD_LOG"
+}
+
+run_logged() {
+    "$@" 2>&1 | tee -a "$BUILD_LOG"
+}
+
+initialize_submodules() {
+    echo "Initializing pinned core submodules" | tee -a "$BUILD_LOG"
+    run_logged git submodule sync --recursive
+    run_logged git submodule update --init --checkout \
+        arm9/vendor/flashcart_core \
+        arm9/vendor/libncgc
+    if [ ! -f arm9/vendor/flashcart_core/device.h ] \
+        || [ ! -f arm9/vendor/libncgc/include/ncgc/ntrcard.h ]; then
+        echo "Error: core submodule initialization failed." | tee -a "$BUILD_LOG" >&2
+        exit 1
+    fi
+    # git submodule sync writes host Git configuration as root under sudo.
+    restore_ownership
+}
+
+clean() {
+    require_docker
+    echo "=== Cleaning Cart-Flasher ==="
+    rm -f "$BUILD_LOG"
+    sudo docker compose run --rm --user "$BUILD_UID:$BUILD_GID" \
+        builder sh -ceu 'make clean'
+}
+
+build() {
+    require_docker
+    start_build_log
+    initialize_submodules
+    echo "Refreshing the builder image and BlocksDS packages without Docker cache" \
+        | tee -a "$BUILD_LOG"
+    echo "Running: sudo docker compose build --pull --no-cache" \
+        | tee -a "$BUILD_LOG"
+    run_logged sudo docker compose build --pull --no-cache
+    echo "Running: sudo docker compose run --rm --user \"$BUILD_UID:$BUILD_GID\" builder" \
+        | tee -a "$BUILD_LOG"
+    # docker compose run uses the image built immediately above unless its
+    # explicit --build option is supplied. The service runs clean-then-build
+    # with no network and the invoking user's UID/GID.
+    run_logged sudo docker compose run --rm \
+        --user "$BUILD_UID:$BUILD_GID" builder
+}
+
+case "${1:-build}" in
+    build)
+        build
+        ;;
+    clean)
+        clean
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac
