@@ -535,7 +535,7 @@ void menu_lvl2(Flashcart* cart)
 			bool confirmed;
 			if (isBackup)
 			{
-				DrawString(TOP_SCREEN, 34, (5 * FONT_HEIGHT), COLOR_WHITE,
+				DrawString(TOP_SCREEN, FONT_WIDTH, 2 * FONT_HEIGHT, COLOR_WHITE,
 					"Back up this cart's flashrom to\n/cart-backups on your SD card.\n\nNothing is written to the cart.\nAn existing backup with this\ncart's name will be replaced.\n\nIf it fails or looks wrong, STOP.\nDo not use Write flash; open an\nissue.");
 				DrawTopFooterAction("<A> Start backup   <B> Cancel");
 				confirmed = WaitConfirm();
