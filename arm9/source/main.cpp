@@ -40,10 +40,12 @@ int main(void)
 	dldiSetMode(DLDI_MODE_ARM9);
 	if (!fatInitDefault()) {
 		DrawString(BOTTOM_SCREEN, FONT_WIDTH, FONT_HEIGHT * 2, COLOR_RED,
-			"SD card init failed!\nLogging, backups and writes\nwon't work this session.");
+			"SD card init failed.\nRestart with the SD card inserted.\n"
+			"Backups, writes, and logs won't work.");
 		// Nothing can be logged without a card, so put the probe on screen
 		// instead -- it survives until the cart list draws over it.
-		DrawString(BOTTOM_SCREEN, FONT_WIDTH, FONT_HEIGHT * 6, COLOR_GREY, "Hardware probe");
+		DrawString(BOTTOM_SCREEN, FONT_WIDTH, FONT_HEIGHT * 6, COLOR_GREY,
+			"Diagnostic details\nTake a photo for a bug report.");
 		LogHardwareProbe(8);
 	}
 	else {

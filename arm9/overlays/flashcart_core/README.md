@@ -10,7 +10,7 @@ stay in `source/banner_ops.cpp`.
 Keep the submodule pristine. Add only unavoidable core changes as clean files
 below `files/`.
 
-## Ace3DS+ TH25Q16 read identification
+## Ace3DS+ TH25Q16 support
 
 The Ace3DS+ driver recognizes the observed `EB 60 15` wire-order RDID as
 TH25Q16-class 2 MiB serial flash and records that identification in the

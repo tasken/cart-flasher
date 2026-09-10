@@ -1,31 +1,33 @@
 name: Bug report
-description: Report a problem with Cart-Flasher
+description: Tell us what failed in Cart-Flasher
 title: "[Bug]: "
 labels: [bug]
 body:
   - type: markdown
     attributes:
       value: |
-        If this is an issue with a specific flashcart (e.g. requesting support for one), please don't file it here — open it on [ntrteam/flashcart_core](https://github.com/ntrteam/flashcart_core) instead.
+        For a request to support an unsupported flashcart, open an issue at
+        [ntrteam/flashcart_core](https://github.com/ntrteam/flashcart_core).
+        Report Cart-Flasher app bugs here.
 
   - type: textarea
     id: description
     attributes:
-      label: Describe the bug
-      description: A clear and concise description of what the bug is.
+      label: What happened?
+      description: Describe the problem and the action you were trying to complete.
     validations:
       required: true
 
   - type: textarea
     id: repro
     attributes:
-      label: To reproduce
-      description: Steps to reproduce the behavior.
+      label: Steps to reproduce
+      description: List the exact actions that led to the problem.
       placeholder: |
         1. Go to '...'
         2. Select '...'
         3. Press '...'
-        4. See error
+        4. Observe the error.
     validations:
       required: true
 
@@ -42,7 +44,11 @@ body:
     attributes:
       label: Screenshots / log output
       description: |
-        If applicable, add a photo/screenshot of the error screen. If the issue happens during cart detection or a flash operation, raise the in-app log level (press **Y** on the flashcart-selection screen) and include what's shown at the bottom of the screen — this is usually the fastest way to pin down the actual failure.
+        Add a photo or screenshot when possible. For detection or flash-operation
+        problems, press **Y** on the flashcart-selection screen until the log
+        level is **DEBUG**, reproduce the problem, power off, and attach
+        `cart-backups/cart_flasher.log`. If SD initialization fails, attach a
+        photo instead.
     validations:
       required: false
 
@@ -83,8 +89,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: Cart-Flasher version/commit
-      description: Shown on the flashcart-selection screen, or the filename of the .nds you're using.
+      label: Cart-Flasher version or commit
+      description: Use the version shown on the flashcart-selection screen, or the .nds filename.
     validations:
       required: true
 

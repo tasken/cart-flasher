@@ -126,7 +126,7 @@ namespace flashcart_core {
 			if (priority == 2) { priority_str = "NOTICE"; }
 			if (priority == 3) { priority_str = "WARN"; }
 			if (priority == 4) { priority_str = "ERROR"; }
-			if (priority >= 5) { priority_str = "?!#$"; }
+			if (priority >= 5) { priority_str = "UNKNOWN"; }
 
 			char string_to_write[100]; //just do 100, should be enough for any kind of log message we get...
 			snprintf(string_to_write, sizeof(string_to_write), "[%s]: %s\n", priority_str, fmt);
@@ -341,6 +341,8 @@ static return_codes_t StreamFlash(flashcart_core::Flashcart* cart, const char* f
 	const char *progressLabel = isRead ? "Reading flash" : "Writing flash";
 
 	DrawString(TOP_SCREEN, FONT_WIDTH, 2 * FONT_HEIGHT, COLOR_WHITE, headerText);
+	DrawString(TOP_SCREEN, FONT_WIDTH, 3 * FONT_HEIGHT, COLOR_WHITE,
+		"Do not power off or remove the cart.");
 
 	progressCount = 0; // start the driver-side draw throttle from a known phase
 	SetProgressStatusOverride(progressLabel);
@@ -668,6 +670,8 @@ return_codes_t WriteBanner(flashcart_core::Flashcart* cart, const char* filepath
 		SCREEN_HEIGHT - 2 * FONT_HEIGHT, COLOR_BLACK);
 	DrawString(TOP_SCREEN, FONT_WIDTH, 2 * FONT_HEIGHT, COLOR_WHITE,
 		"Writing and verifying the banner...");
+	DrawString(TOP_SCREEN, FONT_WIDTH, 3 * FONT_HEIGHT, COLOR_WHITE,
+		"Do not power off or remove the cart.");
 	progressCount = 0;
 	SetProgressStatusOverride("Writing DS banner");
 	ShowProgress(BOTTOM_SCREEN, 0, 1, "Writing DS banner");

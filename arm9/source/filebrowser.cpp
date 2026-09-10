@@ -89,7 +89,8 @@ void ListDirectory(const char* path, const char* ext, std::vector<FileEntry>& ou
 }
 
 void RenderList(const char* currentPath, const char* title,
-				const std::vector<FileEntry>& entries, int cursor, int scrollTop, int visibleCount) {
+				const char* ext, const std::vector<FileEntry>& entries,
+				int cursor, int scrollTop, int visibleCount) {
 	DrawHeader(TOP_SCREEN, title);
 
 	// SCREEN_WIDTH/FONT_WIDTH (42) is one too many: DrawString starts drawing
@@ -128,7 +129,10 @@ void RenderList(const char* currentPath, const char* title,
 	bool hasRealEntries = entries.size() > (hasParentEntry ? 1u : 0u);
 	if (!hasRealEntries) {
 		int emptyMsgY = FONT_HEIGHT * (2 + (hasParentEntry ? 1 : 0));
-		DrawString(TOP_SCREEN, FONT_WIDTH, emptyMsgY, COLOR_GREY, "No .bin files in this folder yet.");
+		char emptyMessage[64];
+		snprintf(emptyMessage, sizeof(emptyMessage),
+			"No %s files here.\nChoose another folder or press <B>.", ext);
+		DrawString(TOP_SCREEN, FONT_WIDTH, emptyMsgY, COLOR_GREY, emptyMessage);
 	}
 
 	DrawString(TOP_SCREEN, FONT_WIDTH, SCREEN_HEIGHT - FONT_HEIGHT, COLOR_YELLOW, "<A> Select   <B> Back");
@@ -139,10 +143,10 @@ void RenderList(const char* currentPath, const char* title,
 bool BrowseForFile(const char* startPath, const char* ext, const char* title,
 					char* outPath, size_t outPathSize) {
 	if (mount_fat() != ALL_OK) {
-		DrawString(TOP_SCREEN, FONT_WIDTH, (15 * FONT_HEIGHT), COLOR_RED,
-			"Couldn't access the SD card.\nMake sure it's inserted.");
-		DrawString(TOP_SCREEN, FONT_WIDTH, (18 * FONT_HEIGHT), COLOR_YELLOW,
-			"Press <B> to go back.");
+		DrawHeader(TOP_SCREEN, title);
+		DrawString(TOP_SCREEN, FONT_WIDTH, (2 * FONT_HEIGHT), COLOR_RED,
+			"Couldn't access the SD card.\nReinsert it, then try again.");
+		DrawTopFooterAction("<B> Back");
 		WaitPress(KEY_B);
 		return false;
 	}
@@ -163,7 +167,7 @@ bool BrowseForFile(const char* startPath, const char* ext, const char* title,
 	while (true) {
 		swiWaitForVBlank();
 		if (dirty) {
-			RenderList(currentPath, title, entries, cursor, scrollTop, visibleCount);
+			RenderList(currentPath, title, ext, entries, cursor, scrollTop, visibleCount);
 			dirty = false;
 		}
 

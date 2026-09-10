@@ -10,27 +10,29 @@ A DS/DSi homebrew application to backup and restore raw flash images to/from Slo
 
 Download the latest [`cart_flasher.nds`](https://github.com/tasken/cart-flasher/releases/latest/download/cart_flasher.nds) and place it on your flashcart's SD card.
 
-1. Boot into your flashcart menu, and launch Cart-Flasher.
-1. Accept the warning by pressing `A`.
-1. Select your cart in the cart list.
-1. To save a copy of your cart, select `Back up flash`, then press `A` to start. Your dump is saved to `cart-backups` on the SD card.
-1. To write a flashrom back, select `Write flash`, pick your `.bin` file, then input the key combo to proceed.
-1. When available for your cart, select `Back up DS banner` to save a reusable banner in `cart-backups/banners`.
-1. Select `Write DS banner`, choose a banner from `cart-backups/banners`, then input the key combo to apply it.
-1. Wait until the progress bar finishes, then press `A`.
+1. Open your flashcart menu and launch Cart-Flasher.
+1. Read the warning, then press `A` to continue.
+1. Select your cart from the list.
+1. Select `Back up flash`, then press `A` to save a backup in `cart-backups` on the SD card.
+1. Copy your first backup off the SD card before using `Write flash`.
+1. To restore a flashrom, select `Write flash`, choose the `.bin` backup, then enter the displayed key combo.
+1. When available, select `Back up DS banner` to save the current banner in `cart-backups/banners`.
+1. Select `Write DS banner`, choose a banner from `cart-backups/banners`, then enter the displayed key combo.
+1. When the completion screen appears, press `A` to return to the cart list.
 
 > [!TIP]
-> Keep a copy of your first dump somewhere off the SD card. Dumping the same cart again overwrites the old file.
+> Flash backups use one filename per cart. Backing up the same cart again
+> replaces the existing backup, so keep a copy somewhere off the SD card.
 
 > [!NOTE]
-> Some supported carts offer `Back up DS banner` and `Write DS banner` when
-> their layout is safe to change. Banner backups go in `cart-backups/banners`;
-> the app keeps older backups instead of replacing them. Use
+> Banner options appear only when Cart-Flasher recognizes a safe layout.
+> Banner backups go in `cart-backups/banners`; the app keeps older banner
+> backups instead of replacing them. Use
 > [DS Banner Maker](https://tasken.github.io/banner-maker/) to create a new
 > banner or edit a backup, then select it with `Write DS banner`.
 >
-> The app checks both the cart and banner before writing, changes only the
-> banner area, and verifies the result afterward.
+> Before writing, the app checks the cart and banner, changes only the banner
+> area, and verifies the result afterward.
 
 ## Supported carts
 
@@ -39,33 +41,44 @@ Ace3DS+, Acekard 2i, DSTT, R4i Gold 3DS, R4iSDHC family, R4 SDHC Dual-Core
 Replay DS).
 
 > [!NOTE]
-> If normal Ace3DS+ detection fails, `Try recovery header` offers the known 2
-> MiB R4iSDHC.hk Dual Core 2021 stock profile. It verifies the Deep Labyrinth
-> recovery header and `RDID 1540EF` before enabling backup or restore. Back up
-> first and restore only a verified image.
+> Ace3DS+ banner options appear only for recognized firmware layouts. The
+> 2 MiB TH25Q16/ADLE layout is supported; an unrecognized layout safely shows
+> only flash operations.
+>
+> If normal Ace3DS+ detection fails, select `Try alternate detection` only for
+> the known 2 MiB R4iSDHC.hk Dual Core 2021 (Deep Labyrinth/ADLE) or SpongeBob
+> (AL3E) stock profiles. Start with `Back up flash`, and restore only a
+> verified image.
 
 `Sanras`'s [flashcart guide](https://sanrax.github.io/flashcart-guides/) covers which retail carts these map to, and has a full walkthrough for [changing a flashcart's banner](https://sanrax.github.io/flashcart-guides/tutorials/icon-change/) using this tool.
 
 > [!CAUTION]
 > **Breaks stock DSi/3DS compatibility**
 >
-> Changing the icon or banner text of a flashcart will cause it to be blocked by DSi and 3DS firmware, *unless* CFW (Custom Firmware) is installed on the console. NDS and DS Lite are not affected by this, as they do not do any integrity checks on the game being loaded.
+> Changing a flashcart's icon or banner text prevents it from launching on
+> stock DSi and 3DS firmware. Use CFW (Custom Firmware) on those consoles;
+> DS and DS Lite are unaffected.
 >
 > This only applies to banners you have changed. Restoring your own untouched backup is fine.
 
 > [!WARNING]
-> Not every cart has been tested. If you can't dump the flashrom for your cart, or the resulting dump is nonsense, STOP and do not proceed any further. [Open an issue](https://github.com/tasken/Cart-Flasher/issues) and provide information about your cart and setup.
+> Not every cart has been tested. If `Back up flash` fails, or its backup has
+> an unexpected size or cannot be read, **STOP**. Do not use `Write flash`.
+> [Open an issue](https://github.com/tasken/Cart-Flasher/issues) with your
+> cart and launch details.
 >
-> Use real hardware. Emulators can't emulate a flashcart, so a detection there means nothing even when it looks like it worked.
+> Test only on real DS-family hardware. Flashcart detection in an emulator is
+> not valid.
 >
 > And as always, flashing carts and modifying firmware carries a risk. We are not responsible for any damage that may occur, such as bricked carts.
 
 ## Reporting a problem
 
 1. Press `Y` on the cart list until the log reads `DEBUG`.
-1. Do the thing that went wrong again.
-1. Power off, and grab `cart-backups/cart_flasher.log` from your SD card.
-1. [Open an issue](https://github.com/tasken/Cart-Flasher/issues) with the log attached, which cart you have, and how you launched Cart-Flasher.
+1. Reproduce the problem once.
+1. Power off and copy `cart-backups/cart_flasher.log` from the SD card.
+1. [Open an issue](https://github.com/tasken/Cart-Flasher/issues) with the
+   log, cart model, and how you launched Cart-Flasher.
 
 > [!NOTE]
 > If you saw `SD card init failed!`, there is no log to send. Take a photo of the screen and attach that instead.
