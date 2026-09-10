@@ -46,7 +46,9 @@ echo "=== $MSG ==="
 # plain (non-sudo) invocation.
 BUILD_UID="${SUDO_UID:-$(id -u)}"
 BUILD_GID="${SUDO_GID:-$(id -g)}"
-echo "Running: sudo docker compose run --rm --build --user \"$BUILD_UID:$BUILD_GID\" builder sh -c \"$CMD\" (log: $BUILD_LOG)"
+echo "Refreshing the builder image and BlocksDS packages without Docker cache"
+echo "Running: sudo docker compose build --pull --no-cache (log: $BUILD_LOG)"
+echo "Running: sudo docker compose run --rm --user \"$BUILD_UID:$BUILD_GID\" builder sh -c \"$CMD\""
 echo ""
 # Remove any stale log from a previous run before tee opens a fresh one. Doing
 # this here (not in the Makefile's `clean` target) matters: that target runs
@@ -64,6 +66,8 @@ rm -f "$BUILD_LOG"
 # from touching those files without another sudo call.
 # The Compose service uses `network_mode: none`: make only needs the
 # bind-mounted checkout and installed toolchain, so the runtime build must not
-# create or join Docker's default network. The image build remains allowed to
-# reach the package repository for Dockerfile's wf-pacman refresh.
-sudo docker compose run --rm --build --user "$BUILD_UID:$BUILD_GID" builder sh -c "$CMD" 2>&1 | tee "$BUILD_LOG"
+# create or join Docker's default network. Refresh the base image and rebuild
+# every Dockerfile layer so the Dockerfile's wf-pacman step cannot be reused
+# from cache. `pipefail` preserves a build or log-write failure through tee.
+sudo docker compose build --pull --no-cache 2>&1 | tee "$BUILD_LOG"
+sudo docker compose run --rm --user "$BUILD_UID:$BUILD_GID" builder sh -c "$CMD" 2>&1 | tee -a "$BUILD_LOG"

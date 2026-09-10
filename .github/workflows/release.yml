@@ -18,6 +18,10 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v7.0.1
+      - name: Refresh BlocksDS packages
+        run: |
+          wf-pacman -Syu --noconfirm
+          wf-config clean-caches --all
       - name: Initialize core submodules
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
