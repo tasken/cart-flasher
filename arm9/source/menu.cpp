@@ -197,20 +197,30 @@ static int DrawWrappedText(u16 *screen, int x, int y, u16 color, const char *tex
 	return y;
 }
 
-static int DrawCenteredTextBlock(u16 *screen, int y, u16 color, const char *text) {
+static int CountTextLines(const char *text) {
 	int lineCount = 1;
 	for (const char *p = text; *p; ++p) {
 		if (*p == '\n') { ++lineCount; }
 	}
+	return lineCount;
+}
+
+static int DrawCenteredTextBlock(u16 *screen, int y, u16 color, const char *text) {
 	DrawStringCentered(screen, y, color, text);
-	return y + lineCount * FONT_HEIGHT;
+	return y + CountTextLines(text) * FONT_HEIGHT;
 }
 
 static bool ConfirmDestructiveWrite(const char *message) {
-	// The combo is centered, so the short user-facing explanation is centered
-	// with it. Callers explicitly balance the lines rather than relying on
-	// automatic wrapping to produce an uneven modal.
-	const int contentY = 2 * FONT_HEIGHT;
+	// Center the complete message/title/combo group in the rows between the
+	// header and footer. Callers provide deliberately balanced lines, so no
+	// trailing fragment makes an otherwise centered modal look lopsided.
+	const int modalHeight = (CountTextLines(message) + 4) * FONT_HEIGHT;
+	const int contentHeight = SCREEN_HEIGHT - (2 * FONT_HEIGHT);
+	const int freeHeight = contentHeight - modalHeight;
+	const int topRows = freeHeight > 0
+		? (freeHeight + FONT_HEIGHT) / (2 * FONT_HEIGHT)
+		: 0;
+	const int contentY = FONT_HEIGHT + topRows * FONT_HEIGHT;
 	const int nextY = DrawCenteredTextBlock(TOP_SCREEN, contentY,
 		COLOR_WHITE, message);
 	const int titleY = nextY + FONT_HEIGHT;
@@ -554,11 +564,10 @@ void menu_lvl2(Flashcart* cart)
 			{
 				confirmed = ConfirmDestructiveWrite(
 					"Change this cart's DS banner?\n\n"
-					"Only banner data is changed.\n"
-					"The rest of its flashrom stays\n"
-					"intact.\n\n"
-					"Custom banners need CFW to\n"
-					"launch on DSi or 3DS.");
+					"Only the DS banner changes.\n"
+					"The rest of the flashrom stays intact.\n\n"
+					"Custom banners require CFW\n"
+					"to launch on DSi or 3DS.");
 			}
 			else
 			{
@@ -567,10 +576,8 @@ void menu_lvl2(Flashcart* cart)
 				// DSi/3DS loading.
 				confirmed = ConfirmDestructiveWrite(
 					"Replace this cart's flashrom?\n\n"
-					"This overwrites its current\n"
-					"flashrom. Keep your original\n"
-					"backup in case you need to\n"
-					"restore it.");
+					"This overwrites the cart's flashrom.\n"
+					"Keep its original backup to restore it.");
 			}
 
 			if (confirmed)
