@@ -252,7 +252,7 @@ public:
     R4iSDHC() : Flashcart("R4iSDHC family", "r4isdhc", 0x200000), cart_type(1) { }
 
     const char* getAuthor() {
-        return "handsomematt, Rai-chan, Kitlith, stuckpixel, angelsl";
+        return "handsomematt, Rai-chan, Kitlith, stuckpixel, angelsl, tasken";
     }
 
     const char* getDescription() {
@@ -262,7 +262,9 @@ public:
             " * R4i-SDHC 3DS RTS (r4i-sdhc.com)\n"
             " * R4i-SDHC B9S (r4i-sdhc.com)\n"
             "\n"
-            "Not the Dual-Core 2013 variant.";
+            "Not the Dual-Core 2013 variant.\n"
+            "\n"
+            "DS banner tools: known 20XX layout.";
     }
 
     bool initialize() {

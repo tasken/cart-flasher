@@ -488,7 +488,7 @@ public:
           m_recoveryProfile(nullptr), m_flashCapacity(0) { }
 
     const char* getAuthor() {
-        return "ntrteam, et al.";
+        return "ntrteam et al., tasken";
     }
 
     const char* getDescription() {
@@ -497,7 +497,10 @@ public:
             " * Ace3DS Plus (ace3ds.com)\n"
             " * r4isdhc.com.cn\n"
             " * Certain Gateway Blue cards\n"
-            " * Clones with sleeping flash (Macronix)";
+            " * Macronix 2 MiB (JID 1528C2)\n"
+            " * Tsingteng TH25Q16 2 MiB (JID 1560EB)\n"
+            "\n"
+            "DS banner tools: known layouts.";
     }
 
     size_t getMaxLength() override {

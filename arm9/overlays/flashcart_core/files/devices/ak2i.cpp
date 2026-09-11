@@ -131,11 +131,11 @@ protected:
 public:
     AK2i() : Flashcart("Acekard 2i", "ak2i", 0x200000) { }
 
-    const char *getAuthor() { return "Kitlith, Normmatt"; }
+    const char *getAuthor() { return "Kitlith, Normmatt, ApacheThunder, tasken"; }
     const char *getDescription() {
         return "Works with:\n"
                " * Acekard 2i HW-44\n"
-               " * Acekard 2i HW-81\n"
+               " * Acekard 2i HW-81 (2 MiB)\n"
                " * R4i Ultra (r4ultra.com)";
     }
 
