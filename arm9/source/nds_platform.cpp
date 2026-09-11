@@ -115,9 +115,10 @@ namespace flashcart_core {
 			return logfile;
 		}
 
-		static int writeLogLineV(FILE *logfile, log_priority priority, const char *fmt, va_list args)
+		static int writeLogLineV(FILE *logfile, log_priority priority, const char *fmt,
+			va_list args, bool force)
 		{
-			if (priority < global_loglevel) { return 0; }
+			if (!force && priority < global_loglevel) { return 0; }
 
 			const char *priority_str;
 			//I use a bunch of if statements here because the array that has strings over at ntrboot_flasher's `platform.cpp` is not available here
@@ -134,11 +135,12 @@ namespace flashcart_core {
 			return vfprintf(logfile, string_to_write, args);
 		}
 
-		static int writeLogLine(FILE *logfile, log_priority priority, const char *fmt, ...)
+		static int writeLogLineForced(FILE *logfile, log_priority priority,
+			const char *fmt, ...)
 		{
 			va_list args;
 			va_start(args, fmt);
-			int result = writeLogLineV(logfile, priority, fmt, args);
+			int result = writeLogLineV(logfile, priority, fmt, args, true);
 			va_end(args);
 			return result;
 		}
@@ -152,7 +154,7 @@ namespace flashcart_core {
 
 			va_list args;
 			va_start(args, fmt);
-			int result = writeLogLineV(logfile, priority, fmt, args);
+			int result = writeLogLineV(logfile, priority, fmt, args, false);
 			va_end(args);
 
 			fclose(logfile);
@@ -174,11 +176,12 @@ namespace flashcart_core {
 	}
 }
 
-// Hardware-state probe, logged when the log level switches to DEBUG. The
-// timer measurement is CPU-speed-independent: it ticks at the fixed 33.5MHz
-// bus clock, so ~8200 ticks means 67MHz, ~4100 means 134MHz, regardless of
-// whether SCFG is readable. EXMEMCNT bit 11 set means the ARM7 owns Slot-1,
-// the BlocksDS DLDI-on-ARM7 failure mode that broke DS-mode detection.
+// Hardware-state probe, opened on demand from the cart list and always logged
+// when the SD is available. The timer measurement is CPU-speed-independent:
+// it ticks at the fixed 33.5MHz bus clock, so ~8200 ticks means 67MHz, ~4100
+// means 134MHz, regardless of whether SCFG is readable. EXMEMCNT bit 11 set
+// means the ARM7 owns Slot-1, the BlocksDS DLDI-on-ARM7 failure mode that
+// broke DS-mode detection.
 //
 // Goes to the log *and* the screen: a cart that won't detect leaves a
 // readable log, but an SD card that won't mount leaves none at all.
@@ -205,8 +208,8 @@ void LogHardwareProbe(int firstRow)
 	const char *const dldiName = io_dldi_data ? io_dldi_data->friendlyName : "(none)";
 
 	// The log carries every field the screen shows, but packed for a log: dense,
-	// one grep-friendly line per group, no colours. logMessage() needs a mounted
-	// SD, so when the mount is what failed only the screen below will have it.
+	// one grep-friendly line per group, no colours. An on-demand probe must log
+	// even when DEBUG is not selected; only an unavailable SD prevents it.
 	//
 	// These three lines share a single open/close bracket (not three separate
 	// logMessage() calls) -- see openLogFileForAppend()'s comment for why:
@@ -215,14 +218,14 @@ void LogHardwareProbe(int firstRow)
 	// next.
 	FILE *probeLogFile = flashcart_core::platform::openLogFileForAppend();
 	if (probeLogFile) {
-		flashcart_core::platform::writeLogLine(probeLogFile, flashcart_core::LOG_DEBUG,
+		flashcart_core::platform::writeLogLineForced(probeLogFile, flashcart_core::LOG_DEBUG,
 			"probe: dsi=%d SCFG_CLK=0x%04X SCFG_EXT=0x%08lX delayTicks=%u",
 			isDSiMode(), REG_SCFG_CLK, (unsigned long)REG_SCFG_EXT, ticks);
-		flashcart_core::platform::writeLogLine(probeLogFile, flashcart_core::LOG_DEBUG,
+		flashcart_core::platform::writeLogLineForced(probeLogFile, flashcart_core::LOG_DEBUG,
 			"probe: EXMEMCNT=0x%04X ROMCTRL=0x%08lX AUXSPICNT=0x%04X cart=%s",
 			REG_EXMEMCNT, (unsigned long)REG_ROMCTRL, REG_AUXSPICNT,
 			arm9OwnsCart ? "ARM9" : "ARM7");
-		flashcart_core::platform::writeLogLine(probeLogFile, flashcart_core::LOG_DEBUG,
+		flashcart_core::platform::writeLogLineForced(probeLogFile, flashcart_core::LOG_DEBUG,
 			"probe: DLDI=%s arm7capable=%d name=%s", dldiModeStr, arm7Capable, dldiName);
 		fclose(probeLogFile);
 	}

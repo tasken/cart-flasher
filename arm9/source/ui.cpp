@@ -141,7 +141,7 @@ void DrawFooter(int loglevel)
 	const char *loglevel_str = (loglevel >= 0 && loglevel < (int)(sizeof(loglevel_names) / sizeof(loglevel_names[0])))
 		? loglevel_names[loglevel] : "?";
 	char action[64];
-	snprintf(action, sizeof(action), "<A> Select   <Y> Log: %s", loglevel_str);
+	snprintf(action, sizeof(action), "<A> Select <Y> Log: %s <SELECT> Probe", loglevel_str);
 	DrawTopFooterAction(action);
 }
 

@@ -77,12 +77,16 @@ void print_boot_msg(void)
 	}
 }
 
-void WaitPress(u32 KEY) {
-	while (true) { swiWaitForVBlank(); scanKeys(); if (keysDown() & KEY) { break; } }
+void WaitPress(u32 keyMask) {
+	while (true) { swiWaitForVBlank(); scanKeys(); if (keysDown() & keyMask) { break; } }
 }
 
-// <A> to go ahead, <B> to back out. WaitPress() only ever waits for one key, so
-// it can't express a choice.
+static void WaitRelease(u32 keyMask) {
+	while (keysHeld() & keyMask) { swiWaitForVBlank(); scanKeys(); }
+}
+
+// <A> to go ahead, <B> to back out. WaitPress() accepts a key mask but doesn't
+// report which key was pressed, so it can't express this choice.
 static bool WaitConfirm(void) {
 	while (true) {
 		swiWaitForVBlank();
@@ -324,22 +328,19 @@ void menu_lvl1(Flashcart* cart)
 				global_loglevel++;
 			}
 			DrawFooter(global_loglevel);
-			// Entering DEBUG snapshots hardware state (launch mode, CPU speed,
-			// cart-bus ownership) to the log and screen -- the screen copy is
-			// all that exists if the SD card itself is what failed.
-			if (global_loglevel == 0) {
-				// Prompt goes on the top footer row like every other screen.
-				// Blanking first is required -- the footer it replaces is
-				// longer, so drawing over it would leave a stale tail.
-				DrawTopFooterAction("<B> Back to the cart list");
-				DrawHeader(BOTTOM_SCREEN, "Hardware probe");
-				LogHardwareProbe(2);
-				WaitPress(KEY_B);
-				DrawFooter(global_loglevel);
-				reprintFlag = true; // redraws the flashcart info the probe covered
-			}
 		}
-		if (keysDown() & KEY_A)
+		if (keysDown() & KEY_SELECT) {
+			// The probe is explicitly requested, so it stays independent of
+			// the log threshold and restores the unchanged footer on return.
+			DrawTopFooterAction("<A>/<B> Back to cart list");
+			DrawHeader(BOTTOM_SCREEN, "Hardware probe");
+			LogHardwareProbe(2);
+			WaitPress(KEY_A | KEY_B);
+			WaitRelease(KEY_A | KEY_B);
+			DrawFooter(global_loglevel);
+			reprintFlag = true; // redraws the flashcart info the probe covered
+		}
+		else if (keysDown() & KEY_A)
 		{
 			cart = flashcart_list->at(menu_sel); //Set the cart equal to whatever we had selected from before
 
