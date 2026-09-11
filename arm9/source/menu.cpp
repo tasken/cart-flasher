@@ -253,6 +253,43 @@ static void DrawFlashcartInfo(Flashcart *cart) {
 
 bool ntrCardReset()
 {
+	const int maxBusyFrames = 120;
+	const u32 maxDummyResetPolls = 0x1000000;
+	auto waitForCardIdle = [&](const char *stage) {
+		for (int frame = 0; frame < maxBusyFrames; ++frame) {
+			if (!(REG_ROMCTRL & CARD_BUSY)) {
+				return true;
+			}
+			swiWaitForVBlank();
+		}
+		platform::logMessage(LOG_ERR,
+			"menu: card reset timed out while waiting for %s", stage);
+		REG_ROMCTRL = 0;
+		return false;
+	};
+	auto sendDummyReset = [&]() {
+		const u8 command[8] = { 0, 0, 0, 0, 0, 0, 0, CARD_CMD_DUMMY };
+		for (int i = 0; i < 8; ++i) {
+			REG_CARD_COMMAND[7 - i] = command[i];
+		}
+		REG_ROMCTRL = CARD_ACTIVATE | CARD_nRESET | CARD_CLK_SLOW
+			| CARD_BLK_SIZE(5) | CARD_DELAY2(0x18);
+
+		for (u32 polls = maxDummyResetPolls; polls != 0; --polls) {
+			const u32 romctrl = REG_ROMCTRL;
+			if (romctrl & CARD_DATA_READY) {
+				(void)REG_CARD_DATA_RD;
+			}
+			if (!(romctrl & CARD_BUSY)) {
+				return true;
+			}
+		}
+		platform::logMessage(LOG_ERR,
+			"menu: card reset timed out while waiting for the dummy response");
+		REG_ROMCTRL = 0;
+		return false;
+	};
+
 	if (isDSiMode())
 	{
 		// Reset card slot
@@ -268,9 +305,12 @@ bool ntrCardReset()
 		for (int i = 0; i < 25; i++) swiWaitForVBlank();
 		REG_AUXSPICNT = CARD_CR1_ENABLE | CARD_CR1_IRQ;
 		REG_ROMCTRL = CARD_nRESET | CARD_SEC_SEED;
-		while (REG_ROMCTRL & CARD_BUSY) ;
-		cardReset();
-		while (REG_ROMCTRL & CARD_BUSY) ;
+		if (!waitForCardIdle("the reset command")) {
+			return false;
+		}
+		if (!sendDummyReset()) {
+			return false;
+		}
 	}
 	return true;
 }
@@ -369,7 +409,11 @@ void menu_lvl1(Flashcart* cart)
 			DrawRectangle(TOP_SCREEN, 0, SCREEN_HEIGHT - FONT_HEIGHT, SCREEN_WIDTH, FONT_HEIGHT, COLOR_BLACK);
 			DrawStringF(TOP_SCREEN, FONT_WIDTH, errorRow * FONT_HEIGHT, COLOR_CYAN, "Detecting %s...", cart->getName());
 
-			if (!cart->requiresCardInitialization()) {
+			const bool isHardwareCart = cart->requiresCardInitialization();
+			if (isHardwareCart) {
+				ncgc::c::ncgc_platform_ntr_begin_detection_timeout();
+			}
+			if (!isHardwareCart) {
 				// App-owned debug carts exercise UI/filesystem flows without
 				// touching the physical Slot-1 bus.
 			} else if (isDSiMode() || strcmp(cart->getShortName(), "DSTT") == 0) {
@@ -388,6 +432,9 @@ void menu_lvl1(Flashcart* cart)
 				card.state(NTRState::Key2);
 			}
 			bool initialized = cart->initialize(&card);
+			if (isHardwareCart) {
+				ncgc::c::ncgc_platform_ntr_end_detection_timeout();
+			}
 			bool recoveryDeclined = false;
 			if (!initialized && cart->hasRecoveryProfile()) {
 				if (!ConfirmRecoveryHeader(cart->getRecoveryPrompt())) {
@@ -403,7 +450,13 @@ void menu_lvl1(Flashcart* cart)
 					DrawString(TOP_SCREEN, FONT_WIDTH, 14 * FONT_HEIGHT, COLOR_CYAN,
 						"Trying alternate detection...");
 					DrawTopFooterAction("");
+					if (isHardwareCart) {
+						ncgc::c::ncgc_platform_ntr_begin_detection_timeout();
+					}
 					initialized = cart->initializeRecovery(&card);
+					if (isHardwareCart) {
+						ncgc::c::ncgc_platform_ntr_end_detection_timeout();
+					}
 				}
 			}
 

@@ -30,6 +30,7 @@
 #define REG_SEEDX_H             (*(volatile uint16_t *)0x40001B8)
 #define REG_SEEDY_H             (*(volatile uint16_t *)0x40001BA)
 #define REG_FIFO                (*(volatile uint32_t *)0x4100010)
+#define REG_VCOUNT              (*(volatile uint16_t *)0x4000006)
 
 #include "platform_ntrcommon.c"
 

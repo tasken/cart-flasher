@@ -41,6 +41,58 @@
 #define MCNT_SPI_CS             0x0040u
 #define MCNT_SPI_BUSY           0x0080u
 
+// Every NTR transport wait has a hard ceiling so a malformed or removed cart
+// returns an error instead of freezing the menu. During detection, the app
+// also arms a five-second VCOUNT deadline that covers successful but endless
+// command-poll loops in individual drivers.
+#define NCGC_NTR_ROM_POLL_LIMIT         0x1000000u
+#define NCGC_NTR_SPI_POLL_LIMIT         0x100000u
+#define NCGC_NTR_VCOUNT_LINES_PER_FRAME 263u
+#define NCGC_NTR_DETECTION_TIMEOUT_LINES \
+    (5u * 60u * NCGC_NTR_VCOUNT_LINES_PER_FRAME)
+
+#if defined(NCGC_PLATFORM_NTR)
+static bool detection_timeout_active;
+static uint16_t detection_last_vcount;
+static uint32_t detection_lines_remaining;
+
+void ncgc_platform_ntr_begin_detection_timeout(void) {
+    detection_timeout_active = true;
+    detection_last_vcount = REG_VCOUNT;
+    detection_lines_remaining = NCGC_NTR_DETECTION_TIMEOUT_LINES;
+}
+
+void ncgc_platform_ntr_end_detection_timeout(void) {
+    detection_timeout_active = false;
+}
+
+static bool detection_timed_out(void) {
+    if (!detection_timeout_active) {
+        return false;
+    }
+    if (detection_lines_remaining == 0) {
+        return true;
+    }
+
+    const uint16_t current_vcount = REG_VCOUNT;
+    const uint16_t elapsed = current_vcount >= detection_last_vcount
+        ? (uint16_t)(current_vcount - detection_last_vcount)
+        : (uint16_t)(NCGC_NTR_VCOUNT_LINES_PER_FRAME - detection_last_vcount
+            + current_vcount);
+    detection_last_vcount = current_vcount;
+    if (elapsed >= detection_lines_remaining) {
+        detection_lines_remaining = 0;
+        return true;
+    }
+    detection_lines_remaining -= elapsed;
+    return false;
+}
+#else
+static bool detection_timed_out(void) {
+    return false;
+}
+#endif
+
 static inline bool set_registers(const uint64_t cmd, const uint32_t read_size, const ncgc_nflags_t flags, bool write) {
     uint32_t blksizeflag;
     switch (read_size) {
@@ -70,14 +122,19 @@ static ncgc_err_t send_command(ncgc_ncard_t *const card, const uint64_t cmd, con
         void *const dest, const uint32_t dest_size, const ncgc_nflags_t flags) {
     (void)card;
 
+    if (detection_timed_out()) {
+        return NCGC_ETIMEOUT;
+    }
     if (!set_registers(cmd, read_size, flags, false)) {
         return NCGC_EARG;
     }
 
     uint32_t *cur = dest;
     uint32_t ctr = 0;
-    do {
-        if (REG_ROMCNT & ROMCNT_DATA_READY) {
+    uint32_t polls = NCGC_NTR_ROM_POLL_LIMIT;
+    while (true) {
+        const uint32_t romcnt = REG_ROMCNT;
+        if (romcnt & ROMCNT_DATA_READY) {
             uint32_t data = REG_FIFO;
             if (dest && ctr < dest_size) {
                 *(cur++) = data;
@@ -86,22 +143,33 @@ static ncgc_err_t send_command(ncgc_ncard_t *const card, const uint64_t cmd, con
             }
             ctr += 4;
         }
-	} while (REG_ROMCNT & ROMCNT_BUSY);
-    return NCGC_EOK;
+        if (!(romcnt & ROMCNT_BUSY)) {
+            return NCGC_EOK;
+        }
+        if (--polls == 0 || detection_timed_out()) {
+            REG_ROMCNT = 0;
+            return NCGC_ETIMEOUT;
+        }
+    }
 }
 
 static ncgc_err_t send_write_command(ncgc_ncard_t *const card, const uint64_t cmd,
         const void *const src, const uint32_t src_size, const ncgc_nflags_t flags) {
     (void)card;
 
+    if (detection_timed_out()) {
+        return NCGC_ETIMEOUT;
+    }
     if (!set_registers(cmd, src_size, flags, true)) {
         return NCGC_EARG;
     }
 
     const uint32_t *cur = src;
     uint32_t ctr = 0;
-    do {
-        if (REG_ROMCNT & ROMCNT_DATA_READY) {
+    uint32_t polls = NCGC_NTR_ROM_POLL_LIMIT;
+    while (true) {
+        const uint32_t romcnt = REG_ROMCNT;
+        if (romcnt & ROMCNT_DATA_READY) {
             if (src && ctr < src_size) {
                 REG_FIFO = *(cur++);
             } else {
@@ -109,8 +177,14 @@ static ncgc_err_t send_write_command(ncgc_ncard_t *const card, const uint64_t cm
             }
             ctr += 4;
         }
-	} while (REG_ROMCNT & ROMCNT_BUSY);
-    return NCGC_EOK;
+        if (!(romcnt & ROMCNT_BUSY)) {
+            return NCGC_EOK;
+        }
+        if (--polls == 0 || detection_timed_out()) {
+            REG_ROMCNT = 0;
+            return NCGC_ETIMEOUT;
+        }
+    }
 }
 
 static void seed_key2(ncgc_ncard_t *const card, uint64_t x, uint64_t y) {
@@ -152,7 +226,13 @@ static ncgc_err_t spi_transact(ncgc_ncard_t *const card, uint8_t in, uint8_t *ou
     // Action Replay ASIC instead of releasing CS on the final clock edge.
     REG_MCNT = MCNT_CR1_ENABLE | MCNT_MODE_SPI | MCNT_SPI_CS;
     REG_MDATA = in;
-    while (REG_MCNT & MCNT_SPI_BUSY);
+    uint32_t polls = NCGC_NTR_SPI_POLL_LIMIT;
+    while (REG_MCNT & MCNT_SPI_BUSY) {
+        if (--polls == 0 || detection_timed_out()) {
+            spi_end(card);
+            return NCGC_ETIMEOUT;
+        }
+    }
     uint8_t data = REG_MDATA;
     if (out) {
         *out = data;
