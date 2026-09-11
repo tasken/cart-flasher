@@ -108,6 +108,11 @@ static void DrawTopStatus(const char *title, const char *message,
 	DrawTopStatusAt(title, message, color, action, 2);
 }
 
+static void DrawCartOperationMenu(Flashcart *cart) {
+	DrawHeader(TOP_SCREEN, cart->getName());
+	DrawTopFooterAction("<A> Select   <B> Back");
+}
+
 static bool IsBannerValidationFailure(return_codes_t result) {
 	return result == BANNER_SIZE_INVALID
 		|| result == BANNER_VERSION_INVALID
@@ -436,8 +441,7 @@ void menu_lvl1(Flashcart* cart)
 
 void menu_lvl2(Flashcart* cart)
 {
-	DrawHeader(TOP_SCREEN, cart->getName());
-	DrawTopFooterAction("<A> Select   <B> Back");
+	DrawCartOperationMenu(cart);
 	int menu_sel = 0;
 	bool dirty = true;
 	const bool hasBannerTools = banner_ops::HasAvailableOperation(cart);
@@ -489,8 +493,7 @@ void menu_lvl2(Flashcart* cart)
 				if (!BrowseForFile(isBannerWrite ? "/cart-backups/banners" : "/cart-backups", ".bin",
 					isBannerWrite ? "Choose a .bin DS banner" : "Choose a .bin flash file",
 					writePath, sizeof(writePath))) {
-					DrawHeader(TOP_SCREEN, cart->getName());
-					DrawTopFooterAction("<A> Select   <B> Back");
+					DrawCartOperationMenu(cart);
 					dirty = true;
 					continue;
 				}
@@ -525,8 +528,7 @@ void menu_lvl2(Flashcart* cart)
 									: "<B> Back to flash list");
 						}
 						WaitPress(KEY_B);
-						DrawHeader(TOP_SCREEN, cart->getName());
-						DrawTopFooterAction("<A> Select   <B> Back");
+						DrawCartOperationMenu(cart);
 						dirty = true;
 						continue;
 					}
@@ -723,8 +725,7 @@ void menu_lvl2(Flashcart* cart)
 			// Back up/Write flash list, not all the way out to the cart
 			// list. No separate "nothing was touched" screen: <B> already
 			// means cancel on both prompts.
-			DrawHeader(TOP_SCREEN, cart->getName());
-			DrawTopFooterAction("<A> Select   <B> Back");
+			DrawCartOperationMenu(cart);
 			dirty = true;
 			continue;
 		}

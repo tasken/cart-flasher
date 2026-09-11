@@ -33,6 +33,31 @@ return_codes_t BannerValidationResult(banner_ops::SourceValidation validation) {
 		? BANNER_VERSION_INVALID : BANNER_CRC_INVALID;
 }
 
+void CreateBackupDirectories() {
+	mkdir("/cart-backups", 0777);
+	mkdir("/cart-backups/banners", 0777);
+}
+
+bool BuildBackupPath(char *path, size_t pathSize, const char *directory,
+	const char *cartName, const char *kind, unsigned int suffix = 0) {
+	const int written = suffix == 0
+		? snprintf(path, pathSize, "%s/%s-%s.bin", directory, cartName, kind)
+		: snprintf(path, pathSize, "%s/%s-%s-%u.bin",
+			directory, cartName, kind, suffix);
+	return written >= 0 && static_cast<size_t>(written) < pathSize;
+}
+
+void ClearStreamProgress() {
+	SetProgressOverride(0, 0);
+	SetProgressStatusOverride(nullptr);
+}
+
+return_codes_t FinishBannerBackup(uint8_t *banner, return_codes_t result) {
+	delete[] banner;
+	SetProgressStatusOverride(nullptr);
+	return result;
+}
+
 } // namespace
 
 bool file_exists(const char* filename) {
@@ -41,15 +66,11 @@ bool file_exists(const char* filename) {
 
 return_codes_t mount_fat(void) {
 	if(!file_exists("sd:/") && !file_exists("fat:/")) {
-		if (fatInitDefault()) {
-			mkdir("/cart-backups", 0777);
-			mkdir("/cart-backups/banners", 0777);
-			return ALL_OK;
+		if (!fatInitDefault()) {
+			return FAT_MOUNT_FAILED;
 		}
-		return FAT_MOUNT_FAILED;
 	}
-	mkdir("/cart-backups", 0777);
-	mkdir("/cart-backups/banners", 0777);
+	CreateBackupDirectories();
 	return ALL_OK;
 }
 
@@ -121,13 +142,14 @@ namespace flashcart_core {
 			if (!force && priority < global_loglevel) { return 0; }
 
 			const char *priority_str;
-			//I use a bunch of if statements here because the array that has strings over at ntrboot_flasher's `platform.cpp` is not available here
-			if (priority == 0) { priority_str = "DEBUG"; }
-			if (priority == 1) { priority_str = "INFO"; }
-			if (priority == 2) { priority_str = "NOTICE"; }
-			if (priority == 3) { priority_str = "WARN"; }
-			if (priority == 4) { priority_str = "ERROR"; }
-			if (priority >= 5) { priority_str = "UNKNOWN"; }
+			switch (priority) {
+				case LOG_DEBUG: priority_str = "DEBUG"; break;
+				case LOG_INFO: priority_str = "INFO"; break;
+				case LOG_NOTICE: priority_str = "NOTICE"; break;
+				case LOG_WARN: priority_str = "WARN"; break;
+				case LOG_ERR: priority_str = "ERROR"; break;
+				default: priority_str = "UNKNOWN"; break;
+			}
 
 			char string_to_write[100]; //just do 100, should be enough for any kind of log message we get...
 			snprintf(string_to_write, sizeof(string_to_write), "[%s]: %s\n", priority_str, fmt);
@@ -248,15 +270,8 @@ void LogHardwareProbe(int firstRow)
 		"DLDI: %s", dldiName);
 }
 
-static char* calculate_backup_path(const char *cart_name) {
-    int path_len = snprintf(NULL, 0, "/cart-backups/%s-backup.bin", cart_name) + 1;
-    char *path = (char *)malloc(path_len);
-    snprintf(path, path_len, "/cart-backups/%s-backup.bin", cart_name);
-    return path;
-}
-
 // Shared by DumpFlash()/WriteFlash() -- both stream the cart's flashrom to or
-// from a file in the same 32KB-chunk shape (open, loop with a progress bar,
+// from a file in the same 64 KiB-chunk shape (open, loop with a progress bar,
 // close), the only real differences being which direction the bytes flow and
 // the wording shown on screen while it happens. isRead selects "reading FROM
 // the cart, writing TO the file" (DumpFlash's direction) vs "reading FROM the
@@ -303,6 +318,10 @@ static return_codes_t StreamFlash(flashcart_core::Flashcart* cart, const char* f
 		delete[] chunkBuffer;
 		return FILE_OPEN_FAILED;
 	}
+	auto closeStream = [&]() {
+		delete[] chunkBuffer;
+		return fclose(file);
+	};
 
 	if (!isRead) {
 		// Validate size before touching the cart -- streaming would otherwise only
@@ -310,31 +329,27 @@ static return_codes_t StreamFlash(flashcart_core::Flashcart* cart, const char* f
 		if (fseek(file, 0, SEEK_END) != 0) {
 			flashcart_core::platform::logMessage(flashcart_core::LOG_ERR,
 				"StreamFlash: couldn't seek selected image %s", filepath);
-			delete[] chunkBuffer;
-			fclose(file);
+			closeStream();
 			return FILE_IO_FAILED;
 		}
 		long fileSize = ftell(file);
 		if (fseek(file, 0, SEEK_SET) != 0) {
 			flashcart_core::platform::logMessage(flashcart_core::LOG_ERR,
 				"StreamFlash: couldn't rewind selected image %s", filepath);
-			delete[] chunkBuffer;
-			fclose(file);
+			closeStream();
 			return FILE_IO_FAILED;
 		}
 		if (fileSize < 0) {
 			flashcart_core::platform::logMessage(flashcart_core::LOG_ERR,
 				"StreamFlash: couldn't determine size of selected image %s", filepath);
-			delete[] chunkBuffer;
-			fclose(file);
+			closeStream();
 			return FILE_IO_FAILED;
 		}
 		if ((u32)fileSize < Flash_size) {
 			flashcart_core::platform::logMessage(flashcart_core::LOG_ERR,
 				"StreamFlash: expected at least %lu bytes, got %ld from %s",
 				static_cast<unsigned long>(Flash_size), fileSize, filepath);
-			delete[] chunkBuffer;
-			fclose(file);
+			closeStream();
 			return FLASH_IMAGE_INVALID;
 		}
 	}
@@ -350,6 +365,11 @@ static return_codes_t StreamFlash(flashcart_core::Flashcart* cart, const char* f
 	progressCount = 0; // start the driver-side draw throttle from a known phase
 	SetProgressStatusOverride(progressLabel);
 	ShowProgress(BOTTOM_SCREEN, 0, Flash_size, progressLabel);
+	auto abortStream = [&](return_codes_t result) {
+		closeStream();
+		ClearStreamProgress();
+		return result;
+	};
 
 	for (u32 chunkOffset = 0; chunkOffset < Flash_size; chunkOffset += chunkSize) {
 		SetProgressOverride(chunkOffset, Flash_size);
@@ -362,50 +382,32 @@ static return_codes_t StreamFlash(flashcart_core::Flashcart* cart, const char* f
 
 		if (isRead) {
 			if (!cart->readFlash(chunkOffset, currentChunkSize, chunkBuffer)) {
-				delete[] chunkBuffer;
-				fclose(file);
-				SetProgressOverride(0, 0); // Reset override
-				SetProgressStatusOverride(nullptr);
-				return FLASH_OP_FAILED; //Flash reading failed
+				return abortStream(FLASH_OP_FAILED);
 			}
 			if (fwrite(chunkBuffer, 1, currentChunkSize, file) != currentChunkSize) {
-				delete[] chunkBuffer;
-				fclose(file);
-				SetProgressOverride(0, 0); // Reset override
-				SetProgressStatusOverride(nullptr);
-				return FILE_IO_FAILED; //File writing failed
+				return abortStream(FILE_IO_FAILED);
 			}
 		} else {
 			if (fread(chunkBuffer, 1, currentChunkSize, file) != currentChunkSize) {
-				delete[] chunkBuffer;
-				fclose(file);
-				SetProgressOverride(0, 0); // Reset override
-				SetProgressStatusOverride(nullptr);
-				return FILE_IO_FAILED; //File reading failed
+				return abortStream(FILE_IO_FAILED);
 			}
 			if (!cart->writeFlash(chunkOffset, currentChunkSize, chunkBuffer)) {
-				delete[] chunkBuffer;
-				fclose(file);
-				SetProgressOverride(0, 0); // Reset override
-				SetProgressStatusOverride(nullptr);
-				return FLASH_OP_FAILED; //Flash writing failed
+				return abortStream(FLASH_OP_FAILED);
 			}
 		}
 
 		SetProgressOverride(0, 0); // Reset override before drawing absolute progress
 		ShowProgress(BOTTOM_SCREEN, chunkOffset + currentChunkSize, Flash_size, progressLabel);
 	}
-	const int closeResult = fclose(file);
-	delete[] chunkBuffer;
+	const int closeResult = closeStream();
 	if (closeResult != 0) {
 		flashcart_core::platform::logMessage(flashcart_core::LOG_ERR,
 			"StreamFlash: couldn't finish %s", filepath);
-		SetProgressOverride(0, 0);
-		SetProgressStatusOverride(nullptr);
+		ClearStreamProgress();
 		return FILE_IO_FAILED;
 	}
 
-	SetProgressOverride(0, 0); // Reset override
+	SetProgressOverride(0, 0); // Reset override before final absolute progress
 	ShowProgress(BOTTOM_SCREEN, Flash_size, Flash_size, progressLabel);
 	SetProgressStatusOverride(nullptr);
 
@@ -414,23 +416,27 @@ static return_codes_t StreamFlash(flashcart_core::Flashcart* cart, const char* f
 
 return_codes_t DumpFlash(flashcart_core::Flashcart* cart)
 {
-	char* backup_path = calculate_backup_path(cart->getShortName());
-	return_codes_t result = StreamFlash(cart, backup_path, true);
-	free(backup_path);
-	return result;
+	char path[128];
+	if (!BuildBackupPath(path, sizeof(path), "/cart-backups",
+			cart->getShortName(), "backup")) {
+		flashcart_core::platform::logMessage(flashcart_core::LOG_ERR,
+			"DumpFlash: couldn't create a backup path");
+		return FILE_OPEN_FAILED;
+	}
+	return StreamFlash(cart, path, true);
 }
 
 static bool BannerBackupPath(const char *cartName, char *path, size_t pathSize) {
-	if (snprintf(path, pathSize, "/cart-backups/banners/%s-banner.bin", cartName)
-		>= static_cast<int>(pathSize)) {
+	if (!BuildBackupPath(path, pathSize, "/cart-backups/banners",
+			cartName, "banner")) {
 		return false;
 	}
 	if (!file_exists(path)) {
 		return true;
 	}
 	for (unsigned int suffix = 2; suffix <= 99; ++suffix) {
-		if (snprintf(path, pathSize, "/cart-backups/banners/%s-banner-%u.bin",
-				cartName, suffix) >= static_cast<int>(pathSize)) {
+		if (!BuildBackupPath(path, pathSize, "/cart-backups/banners",
+				cartName, "banner", suffix)) {
 			return false;
 		}
 		if (!file_exists(path)) {
@@ -460,13 +466,10 @@ return_codes_t DumpBanner(flashcart_core::Flashcart* cart)
 	if (!banner) {
 		flashcart_core::platform::logMessage(flashcart_core::LOG_ERR,
 			"DumpBanner: banner buffer allocation failed");
-		SetProgressStatusOverride(nullptr);
-		return MEM_ALLOC_FAILED;
+		return FinishBannerBackup(banner, MEM_ALLOC_FAILED);
 	}
 	if (!banner_ops::ReadBanner(cart, banner, banner_ops::kSourceBannerSize)) {
-		delete[] banner;
-		SetProgressStatusOverride(nullptr);
-		return FLASH_OP_FAILED;
+		return FinishBannerBackup(banner, FLASH_OP_FAILED);
 	}
 
 	const banner_ops::SourceValidation validation = banner_ops::ValidateSourceBanner(
@@ -474,26 +477,20 @@ return_codes_t DumpBanner(flashcart_core::Flashcart* cart)
 	if (validation != banner_ops::SourceValidation::Valid) {
 		flashcart_core::platform::logMessage(flashcart_core::LOG_ERR,
 			"DumpBanner: driver returned an invalid v1 banner");
-		delete[] banner;
-		SetProgressStatusOverride(nullptr);
-		return BannerValidationResult(validation);
+		return FinishBannerBackup(banner, BannerValidationResult(validation));
 	}
 
 	char path[128];
 	if (!BannerBackupPath(cart->getShortName(), path, sizeof(path))) {
 		flashcart_core::platform::logMessage(flashcart_core::LOG_ERR,
 			"DumpBanner: couldn't choose a new backup path");
-		delete[] banner;
-		SetProgressStatusOverride(nullptr);
-		return FILE_OPEN_FAILED;
+		return FinishBannerBackup(banner, FILE_OPEN_FAILED);
 	}
 	FILE* file = fopen(path, "wb");
 	if (!file) {
 		flashcart_core::platform::logMessage(flashcart_core::LOG_ERR,
 			"DumpBanner: couldn't create %s", path);
-		delete[] banner;
-		SetProgressStatusOverride(nullptr);
-		return FILE_OPEN_FAILED;
+		return FinishBannerBackup(banner, FILE_OPEN_FAILED);
 	}
 	const bool wrote = fwrite(banner, 1, banner_ops::kSourceBannerSize, file)
 		== banner_ops::kSourceBannerSize;
@@ -501,17 +498,13 @@ return_codes_t DumpBanner(flashcart_core::Flashcart* cart)
 	if (!wrote || closeResult != 0) {
 		flashcart_core::platform::logMessage(flashcart_core::LOG_ERR,
 			"DumpBanner: couldn't finish %s", path);
-		delete[] banner;
 		remove(path);
-		SetProgressStatusOverride(nullptr);
-		return FILE_IO_FAILED;
+		return FinishBannerBackup(banner, FILE_IO_FAILED);
 	}
-	delete[] banner;
 	flashcart_core::platform::logMessage(flashcart_core::LOG_NOTICE,
 		"DumpBanner: saved validated v1 banner to %s", path);
 	ShowProgress(BOTTOM_SCREEN, 1, 1, "Backing up DS banner");
-	SetProgressStatusOverride(nullptr);
-	return ALL_OK;
+	return FinishBannerBackup(banner, ALL_OK);
 }
 
 return_codes_t ValidateFlashImage(flashcart_core::Flashcart* cart, const char* filepath)

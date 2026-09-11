@@ -88,6 +88,13 @@ void ListDirectory(const char* path, const char* ext, std::vector<FileEntry>& ou
 	outEntries.insert(outEntries.end(), real.begin(), real.end());
 }
 
+void ResetDirectoryView(const char* path, const char* ext,
+	std::vector<FileEntry>& entries, int& cursor, int& scrollTop) {
+	ListDirectory(path, ext, entries);
+	cursor = 0;
+	scrollTop = 0;
+}
+
 void RenderList(const char* currentPath, const char* title,
 				const char* ext, const std::vector<FileEntry>& entries,
 				int cursor, int scrollTop, int visibleCount) {
@@ -156,10 +163,9 @@ bool BrowseForFile(const char* startPath, const char* ext, const char* title,
 	currentPath[sizeof(currentPath) - 1] = '\0';
 
 	std::vector<FileEntry> entries;
-	ListDirectory(currentPath, ext, entries);
-
 	int cursor = 0;
 	int scrollTop = 0;
+	ResetDirectoryView(currentPath, ext, entries, cursor, scrollTop);
 	const int visibleCount = (SCREEN_HEIGHT - FONT_HEIGHT * 3) / FONT_HEIGHT;
 	bool dirty = true;
 	bool result = false;
@@ -190,27 +196,21 @@ bool BrowseForFile(const char* startPath, const char* ext, const char* title,
 				break;
 			}
 			PathUp(currentPath);
-			ListDirectory(currentPath, ext, entries);
-			cursor = 0;
-			scrollTop = 0;
+			ResetDirectoryView(currentPath, ext, entries, cursor, scrollTop);
 			dirty = true;
 		}
 		if (keys & KEY_A && !entries.empty()) {
 			const FileEntry sel = entries[cursor];
 			if (strcmp(sel.name, "..") == 0) {
 				PathUp(currentPath);
-				ListDirectory(currentPath, ext, entries);
-				cursor = 0;
-				scrollTop = 0;
+				ResetDirectoryView(currentPath, ext, entries, cursor, scrollTop);
 				dirty = true;
 			} else if (sel.isDir) {
 				char newPath[512];
 				PathJoin(newPath, sizeof(newPath), currentPath, sel.name);
 				strncpy(currentPath, newPath, sizeof(currentPath) - 1);
 				currentPath[sizeof(currentPath) - 1] = '\0';
-				ListDirectory(currentPath, ext, entries);
-				cursor = 0;
-				scrollTop = 0;
+				ResetDirectoryView(currentPath, ext, entries, cursor, scrollTop);
 				dirty = true;
 			} else {
 				char fullPath[512];
